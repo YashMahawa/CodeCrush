@@ -63,6 +63,38 @@ export default function CodePanel({
     }
   };
 
+  // Flexible output comparison that handles whitespace differences
+  const compareOutputs = (actual: string, expected: string): boolean => {
+    // Normalize both outputs:
+    // 1. Trim leading/trailing whitespace
+    // 2. Split by any whitespace (spaces, tabs, newlines)
+    // 3. Filter out empty strings
+    // 4. Compare token by token
+    const normalizeOutput = (str: string) => {
+      return str
+        .trim()
+        .split(/\s+/)
+        .filter(token => token.length > 0);
+    };
+
+    const actualTokens = normalizeOutput(actual);
+    const expectedTokens = normalizeOutput(expected);
+
+    // Compare length first
+    if (actualTokens.length !== expectedTokens.length) {
+      return false;
+    }
+
+    // Compare each token
+    for (let i = 0; i < actualTokens.length; i++) {
+      if (actualTokens[i] !== expectedTokens[i]) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   const handleEvaluate = async () => {
     if (testCases.length === 0) {
       alert("Please generate test cases first!");
@@ -98,7 +130,7 @@ export default function CodePanel({
           status = "TLE";
         } else if (data.status?.id === 6) { // Memory Limit Exceeded  
           status = "MLE";
-        } else if (data.stdout?.trim() !== testCase.expectedOutput?.trim()) {
+        } else if (!compareOutputs(data.stdout || "", testCase.expectedOutput || "")) {
           status = "Wrong Answer";
         }
 

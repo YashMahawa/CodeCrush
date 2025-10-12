@@ -48,6 +48,9 @@ export default function ProblemPanel({
 
       const data = await response.json();
       setTestCases(data.testCases);
+      
+      // Show success notification
+      alert(`✅ Success! Generated ${data.testCases.length} test cases`);
     } catch (err) {
       setError("Oops! The AI assistant is currently unavailable. Please try again.");
       console.error(err);

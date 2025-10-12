@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const apiKey = process.env.GEMINI_API_KEY;
+
+if (!apiKey) {
+  throw new Error("GEMINI_API_KEY environment variable is not set.");
+}
+
+const ai = new GoogleGenAI({
+  apiKey,
+});
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,16 +42,19 @@ ${complexityInstructions[complexity]}
 
 **CRITICAL REQUIREMENTS:**
 1. Generate VALID, WORKING test cases with correct expected outputs
-2. Time limits should allow standard O(n) or O(n log n) solutions but prevent O(n³) algorithms
-3. For simple problems: 1-2 seconds time limit
-4. For problems with higher complexity: 2-3 seconds time limit
-5. Memory limit is typically 256MB unless the problem requires large data structures (then use 512MB)
-6. Make sure inputs and outputs are EXACTLY as they would appear in stdin/stdout
-7. Include newlines (\\n) where needed in multi-line inputs/outputs
-8. Test cases should progressively increase in difficulty
+2. Keep test inputs REASONABLE in size - avoid generating massive test cases with 100+ lines
+3. For arrays/matrices, use small to medium sizes (1-20 elements typically, max 50 for performance tests)
+4. Time limits should allow standard O(n) or O(n log n) solutions but prevent O(n³) algorithms
+5. For simple problems: 1-2 seconds time limit
+6. For problems with higher complexity: 2-3 seconds time limit
+7. Memory limit is typically 256MB unless the problem requires large data structures (then use 512MB)
+8. Make sure inputs and outputs are EXACTLY as they would appear in stdin/stdout
+9. Include newlines (\\n) where needed in multi-line inputs/outputs
+10. Test cases should progressively increase in difficulty
+11. IMPORTANT: Do NOT use string concatenation (like "...") in your JSON. Provide COMPLETE, ACTUAL test data.
 
 **Output Format:**
-Return ONLY a valid JSON array with NO markdown formatting, NO code blocks, NO explanations. Just the raw JSON array:
+Return ONLY a valid JSON array with NO markdown formatting, NO code blocks, NO explanations, NO ellipsis (...). Just the raw, complete, parseable JSON array:
 
 [
   {
@@ -56,18 +67,23 @@ Return ONLY a valid JSON array with NO markdown formatting, NO code blocks, NO e
 
 Generate ${quantity} test cases now. Remember: ONLY JSON array, nothing else.`;
 
-    // Call Gemini API
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      generationConfig: {
+    // Call Gemini 2.5 Flash API with thinking mode enabled
+    console.log("🧠 Calling Gemini 2.5 Flash API to generate test cases...");
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
         temperature: 0.7,
         maxOutputTokens: 8000,
+        thinkingConfig: {
+          thinkingBudget: 5000, // Enable thinking for better test case generation
+        },
       },
     });
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text();
+    console.log("✅ Received response from Gemini");
+    let text = response.text || "";
 
     // Clean up response - remove markdown code blocks if present
     text = text
@@ -75,14 +91,32 @@ Generate ${quantity} test cases now. Remember: ONLY JSON array, nothing else.`;
       .replace(/```\n?/g, "")
       .trim();
 
-    // Extract JSON array (handle cases where there's extra text)
-    const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
-    if (!jsonMatch) {
-      console.error("Could not extract JSON from response:", text);
-      throw new Error("Invalid response format from AI");
+    // Try to parse directly first (most common case)
+    let testCases;
+    try {
+      testCases = JSON.parse(text);
+      console.log(`✅ Successfully parsed ${testCases.length} test cases`);
+    } catch (parseError: any) {
+      console.log("Direct parse failed, trying extraction...");
+      console.log("Parse error:", parseError.message);
+      console.log("First 200 chars of response:", text.substring(0, 200));
+      console.log("Last 200 chars of response:", text.substring(text.length - 200));
+      
+      // If direct parse fails, try to extract JSON array
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        console.error("Could not extract JSON from response:", text.substring(0, 500));
+        throw new Error("Invalid response format from AI");
+      }
+      
+      try {
+        testCases = JSON.parse(jsonMatch[0]);
+        console.log(`✅ Successfully parsed ${testCases.length} test cases after extraction`);
+      } catch (e2: any) {
+        console.error("Failed to parse extracted JSON:", e2.message);
+        throw new Error("Invalid response format from AI");
+      }
     }
-
-    const testCases = JSON.parse(jsonMatch[0]);
 
     // Validate structure
     if (!Array.isArray(testCases) || testCases.length === 0) {
@@ -104,10 +138,17 @@ Generate ${quantity} test cases now. Remember: ONLY JSON array, nothing else.`;
     });
   } catch (error: any) {
     console.error("❌ Error generating test cases:", error);
+    console.error("Error details:", {
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause,
+    });
+    
     return NextResponse.json(
       {
         error: "Failed to generate test cases. Please try again.",
-        details: error.message,
+        details: error.message || "Unknown error",
+        apiKeySet: !!process.env.GEMINI_API_KEY,
       },
       { status: 500 }
     );
