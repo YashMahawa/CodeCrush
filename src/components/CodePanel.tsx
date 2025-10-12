@@ -30,6 +30,10 @@ export default function CodePanel({
   const [activeTab, setActiveTab] = useState<"input" | "log">("input");
   const [isRunning, setIsRunning] = useState(false);
   const [useLocalExecution, setUseLocalExecution] = useState(false);
+  const [isCheckingLocal, setIsCheckingLocal] = useState(false);
+  const [localMessage, setLocalMessage] = useState<
+    { text: string; type: "info" | "success" | "error" } | null
+  >(null);
 
   const handleRun = async () => {
     setIsRunning(true);
@@ -210,6 +214,62 @@ export default function CodePanel({
     }
   };
 
+  const handleLocalToggle = async (checked: boolean) => {
+    if (!checked) {
+      setUseLocalExecution(false);
+      if (localMessage?.type !== "success") {
+        setLocalMessage(null);
+      }
+      return;
+    }
+
+    if (isCheckingLocal) return;
+
+    setIsCheckingLocal(true);
+    setLocalMessage({ text: "Checking local execution environment...", type: "info" });
+
+    try {
+      const response = await fetch("/api/local-health");
+      const data = await response.json();
+
+      if (data.available) {
+        setUseLocalExecution(true);
+        setLocalMessage({ text: "🖥️ Local execution ready! Cloud mode still available anytime.", type: "success" });
+      } else {
+        setUseLocalExecution(false);
+
+        if (data.cloudEnvironment) {
+          setLocalMessage({
+            text: "Local execution requires running CodeCrush on your own machine. Redirecting to GitHub so you can clone the repo...",
+            type: "error",
+          });
+          setTimeout(() => {
+            window.location.href = "https://github.com/YashMahawa/CodeCrush";
+          }, 3000);
+        } else if (Array.isArray(data.missing) && data.missing.length > 0) {
+          setLocalMessage({
+            text: `Install these tools to enable local execution: ${data.missing.join(", ")}`,
+            type: "error",
+          });
+        } else {
+          setLocalMessage({
+            text: "Local execution is currently unavailable on this environment.",
+            type: "error",
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to check local execution", error);
+      setUseLocalExecution(false);
+      setLocalMessage({
+        text: "Couldn't verify local execution. Ensure you're running CodeCrush locally with gcc/g++/python3/java installed.",
+        type: "error",
+      });
+    } finally {
+      setIsCheckingLocal(false);
+    }
+  };
+
   return (
     <div className="glass-panel h-full flex flex-col overflow-hidden">
       {/* Action Bar */}
@@ -226,7 +286,8 @@ export default function CodePanel({
               <input
                 type="checkbox"
                 checked={useLocalExecution}
-                onChange={(e) => setUseLocalExecution(e.target.checked)}
+                onChange={(e) => handleLocalToggle(e.target.checked)}
+                disabled={isCheckingLocal}
                 className="sr-only peer"
               />
               <div className="w-11 h-6 bg-gray-700 rounded-full peer 
@@ -240,7 +301,7 @@ export default function CodePanel({
               </div>
             </div>
             <span className="text-xs text-gray-400 group-hover:text-neonLime transition-colors">
-              {useLocalExecution ? "🖥️ Local" : "☁️ Cloud"}
+              {isCheckingLocal ? "⏳ Checking..." : useLocalExecution ? "🖥️ Local" : "☁️ Cloud"}
             </span>
           </label>
 
@@ -279,6 +340,20 @@ export default function CodePanel({
           </motion.button>
         </div>
       </div>
+
+      {localMessage && (
+        <div
+          className={`mx-4 mt-2 rounded border px-3 py-2 text-sm transition-all duration-300 ${
+            localMessage.type === "success"
+              ? "border-neonLime/50 text-neonLime bg-neonLime/10"
+              : localMessage.type === "error"
+              ? "border-red-500/40 text-red-300 bg-red-500/10"
+              : "border-neonCyan/40 text-neonCyan bg-neonCyan/10"
+          }`}
+        >
+          {localMessage.text}
+        </div>
+      )}
 
       {/* Monaco Editor */}
       <div className="flex-1 overflow-hidden">
