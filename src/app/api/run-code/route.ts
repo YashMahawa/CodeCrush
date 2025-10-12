@@ -85,15 +85,31 @@ export async function POST(req: NextRequest) {
     // Handle Judge0 API errors
     if (error.response?.status === 429) {
       return NextResponse.json(
-        { error: "Rate limit exceeded. Please wait a moment and try again." },
+        { 
+          error: "Judge0 API rate limit exceeded",
+          hint: "Enable 'Local Execution' toggle if you have compilers installed, or wait a few minutes and try again."
+        },
         { status: 429 }
       );
     }
 
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 || error.response?.status === 403) {
       return NextResponse.json(
-        { error: "Authentication failed. Please check API configuration." },
+        { 
+          error: "Judge0 API authentication failed",
+          hint: "Please check your API key configuration."
+        },
         { status: 500 }
+      );
+    }
+
+    if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+      return NextResponse.json(
+        { 
+          error: "Judge0 API timeout",
+          hint: "The API took too long to respond. Try again or enable local execution."
+        },
+        { status: 504 }
       );
     }
 

@@ -29,6 +29,7 @@ export default function CodePanel({
   const [runLog, setRunLog] = useState("");
   const [activeTab, setActiveTab] = useState<"input" | "log">("input");
   const [isRunning, setIsRunning] = useState(false);
+  const [useLocalExecution, setUseLocalExecution] = useState(false);
 
   const handleRun = async () => {
     setIsRunning(true);
@@ -36,7 +37,8 @@ export default function CodePanel({
     setRunLog("Running...");
 
     try {
-      const response = await fetch("/api/run-code", {
+      const apiEndpoint = useLocalExecution ? "/api/run-local" : "/api/run-code";
+      const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -48,15 +50,27 @@ export default function CodePanel({
 
       const data = await response.json();
       
+      // Handle API errors (rate limits, etc.)
+      if (response.status === 429 || data.error?.includes("rate limit")) {
+        setRunLog("⚠️ Judge0 API Rate Limit Reached!\n\nPlease try:\n1. Enable 'Local Execution' toggle if you have compilers installed\n2. Wait a few minutes and try again\n3. Upgrade your Judge0 API plan");
+        return;
+      }
+
+      if (data.error) {
+        setRunLog(`Error: ${data.error}\n${data.details || ""}\n${data.hint || ""}`);
+        return;
+      }
+      
       if (data.compileOutput) {
         setRunLog(`Compilation Error:\n${data.compileOutput}`);
       } else if (data.stderr) {
         setRunLog(`Runtime Error:\n${data.stderr}`);
       } else {
-        setRunLog(`Output:\n${data.stdout || "(no output)"}`);
+        const execMode = data.executionMode === "local" ? " (Local)" : " (Judge0)";
+        setRunLog(`Output${execMode}:\n${data.stdout || "(no output)"}`);
       }
-    } catch (err) {
-      setRunLog("Error: Failed to execute code");
+    } catch (err: any) {
+      setRunLog(`Error: Failed to execute code\n${err.message || ""}`);
       console.error(err);
     } finally {
       setIsRunning(false);
@@ -109,7 +123,8 @@ export default function CodePanel({
       for (let i = 0; i < testCases.length; i++) {
         const testCase = testCases[i];
         
-        const response = await fetch("/api/run-code", {
+        const apiEndpoint = useLocalExecution ? "/api/run-local" : "/api/run-code";
+        const response = await fetch(apiEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -122,6 +137,30 @@ export default function CodePanel({
         });
 
         const data = await response.json();
+
+        // Handle API rate limits
+        if (response.status === 429 || data.error?.includes("rate limit")) {
+          setEvaluationResults({
+            error: true,
+            message: "⚠️ Judge0 API Rate Limit Reached!",
+            hint: "Enable 'Local Execution' toggle if you have compilers installed, or wait a few minutes.",
+            results: results,
+          });
+          setIsEvaluating(false);
+          return;
+        }
+
+        // Handle other errors
+        if (data.error) {
+          setEvaluationResults({
+            error: true,
+            message: `Error: ${data.error}`,
+            hint: data.hint || "Please try again or enable local execution.",
+            results: results,
+          });
+          setIsEvaluating(false);
+          return;
+        }
         
         let status = "Passed";
         if (data.compileOutput) {
@@ -181,6 +220,30 @@ export default function CodePanel({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Local Execution Toggle */}
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <div className="relative">
+              <input
+                type="checkbox"
+                checked={useLocalExecution}
+                onChange={(e) => setUseLocalExecution(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-700 rounded-full peer 
+                              peer-checked:bg-neonLime/50 
+                              transition-all duration-300 
+                              border border-gray-600 peer-checked:border-neonLime/50">
+              </div>
+              <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full 
+                              transition-transform duration-300 
+                              peer-checked:translate-x-5 peer-checked:bg-neonLime">
+              </div>
+            </div>
+            <span className="text-xs text-gray-400 group-hover:text-neonLime transition-colors">
+              {useLocalExecution ? "🖥️ Local" : "☁️ Cloud"}
+            </span>
+          </label>
+
           <select
             className="bg-black/30 text-white px-3 py-1.5 rounded border border-neonCyan/20 
                        focus:border-neonCyan/50 focus:outline-none text-sm"

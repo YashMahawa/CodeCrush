@@ -12,6 +12,28 @@ export default function EvaluationPanel({ results, isEvaluating }: EvaluationPan
   const [filter, setFilter] = useState<"all" | "passed" | "failed">("all");
   const [expandedTest, setExpandedTest] = useState<number | null>(null);
 
+  // Handle error state
+  if (results?.error) {
+    return (
+      <div className="glass-panel h-full flex flex-col items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center max-w-md"
+        >
+          <div className="text-6xl mb-4 text-red-400">⚠️</div>
+          <h3 className="text-xl font-bold text-red-400 mb-3">{results.message}</h3>
+          <p className="text-gray-400 mb-4">{results.hint}</p>
+          {results.results && results.results.length > 0 && (
+            <p className="text-sm text-gray-500">
+              Completed {results.results.length} test(s) before error
+            </p>
+          )}
+        </motion.div>
+      </div>
+    );
+  }
+
   if (!results || results.loading) {
     return (
       <div className="glass-panel h-full flex flex-col items-center justify-center p-6">
