@@ -64,8 +64,11 @@ export async function POST(req: NextRequest) {
         try {
           const { stdout, stderr } = await execAsync(compileCmd, {
             timeout: timeLimit * 1000,
+            maxBuffer: 10 * 1024 * 1024,
+            encoding: "utf8",
+            shell: "/bin/bash",
           });
-          compileOutput = stdout + stderr;
+          compileOutput = `${stdout || ""}${stderr || ""}`;
           
           // Check for compilation errors
           if (compileOutput.toLowerCase().includes("error")) {
@@ -75,8 +78,11 @@ export async function POST(req: NextRequest) {
             });
           }
         } catch (error: any) {
+          const errorStdout = typeof error.stdout === "string" ? error.stdout : Buffer.isBuffer(error.stdout) ? error.stdout.toString("utf8") : "";
+          const errorStderr = typeof error.stderr === "string" ? error.stderr : Buffer.isBuffer(error.stderr) ? error.stderr.toString("utf8") : "";
+
           return NextResponse.json({
-            compileOutput: error.stdout || error.stderr || error.message,
+            compileOutput: (errorStdout + errorStderr || error.message || "Compilation failed").trim(),
             status: { id: 6, description: "Compilation Error" },
           });
         }
@@ -95,8 +101,9 @@ export async function POST(req: NextRequest) {
 
         const { stdout, stderr } = await execAsync(finalCmd, {
           timeout: timeLimit * 1000,
-          maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-          shell: '/bin/bash',
+          maxBuffer: 10 * 1024 * 1024,
+          encoding: "utf8",
+          shell: "/bin/bash",
         });
         const endTime = Date.now();
 
@@ -110,7 +117,6 @@ export async function POST(req: NextRequest) {
       } catch (error: any) {
         const endTime = Date.now();
         
-        // Check if it was a timeout
         if (error.killed && error.signal === "SIGTERM") {
           return NextResponse.json({
             status: { id: 5, description: "Time Limit Exceeded" },
@@ -119,9 +125,19 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // Runtime error
+        const stderrOutput = typeof error.stderr === "string"
+          ? error.stderr
+          : Buffer.isBuffer(error.stderr)
+            ? error.stderr.toString("utf8")
+            : "";
+        const stdoutOutput = typeof error.stdout === "string"
+          ? error.stdout
+          : Buffer.isBuffer(error.stdout)
+            ? error.stdout.toString("utf8")
+            : "";
+
         return NextResponse.json({
-          stderr: error.stdout || error.stderr || error.message,
+          stderr: stderrOutput || stdoutOutput || error.message,
           time: ((endTime - startTime) / 1000).toFixed(3),
           status: { id: 11, description: "Runtime Error" },
           executionMode: "local",
@@ -137,13 +153,10 @@ export async function POST(req: NextRequest) {
     }
   } catch (error: any) {
     console.error("Local execution error:", error);
-    return NextResponse.json(
-      { 
-        error: "Local execution failed", 
-        details: error.message,
-        hint: "Make sure gcc/g++/python3/java are installed on the server" 
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error: "Local execution failed",
+      details: error.message,
+      hint: "Make sure gcc/g++/python3/java are installed on the server",
+    }, { status: 500 });
   }
 }
