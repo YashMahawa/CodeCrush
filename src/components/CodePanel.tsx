@@ -1,0 +1,270 @@
+"use client";
+
+import { useState } from "react";
+import { motion } from "framer-motion";
+import Editor from "@monaco-editor/react";
+
+interface CodePanelProps {
+  code: string;
+  setCode: (code: string) => void;
+  language: string;
+  setLanguage: (lang: string) => void;
+  testCases: any[];
+  setEvaluationResults: (results: any) => void;
+  isEvaluating: boolean;
+  setIsEvaluating: (value: boolean) => void;
+}
+
+export default function CodePanel({
+  code,
+  setCode,
+  language,
+  setLanguage,
+  testCases,
+  setEvaluationResults,
+  isEvaluating,
+  setIsEvaluating,
+}: CodePanelProps) {
+  const [customInput, setCustomInput] = useState("");
+  const [runLog, setRunLog] = useState("");
+  const [activeTab, setActiveTab] = useState<"input" | "log">("input");
+  const [isRunning, setIsRunning] = useState(false);
+
+  const handleRun = async () => {
+    setIsRunning(true);
+    setActiveTab("log");
+    setRunLog("Running...");
+
+    try {
+      const response = await fetch("/api/run-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          language,
+          input: customInput,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.compileOutput) {
+        setRunLog(`Compilation Error:\n${data.compileOutput}`);
+      } else if (data.stderr) {
+        setRunLog(`Runtime Error:\n${data.stderr}`);
+      } else {
+        setRunLog(`Output:\n${data.stdout || "(no output)"}`);
+      }
+    } catch (err) {
+      setRunLog("Error: Failed to execute code");
+      console.error(err);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleEvaluate = async () => {
+    if (testCases.length === 0) {
+      alert("Please generate test cases first!");
+      return;
+    }
+
+    setIsEvaluating(true);
+    setEvaluationResults({ loading: true });
+
+    try {
+      const results = [];
+      for (let i = 0; i < testCases.length; i++) {
+        const testCase = testCases[i];
+        
+        const response = await fetch("/api/run-code", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code,
+            language,
+            input: testCase.input,
+            timeLimit: testCase.timeLimitSeconds,
+            memoryLimit: testCase.memoryLimitMB,
+          }),
+        });
+
+        const data = await response.json();
+        
+        let status = "Passed";
+        if (data.compileOutput) {
+          status = "Compilation Error";
+        } else if (data.status?.id === 5) { // Time Limit Exceeded
+          status = "TLE";
+        } else if (data.status?.id === 6) { // Memory Limit Exceeded  
+          status = "MLE";
+        } else if (data.stdout?.trim() !== testCase.expectedOutput?.trim()) {
+          status = "Wrong Answer";
+        }
+
+        results.push({
+          testNumber: i + 1,
+          status,
+          input: testCase.input,
+          expectedOutput: testCase.expectedOutput,
+          actualOutput: data.stdout || "",
+          time: data.time || 0,
+          memory: data.memory || 0,
+          timeLimit: testCase.timeLimitSeconds,
+          memoryLimit: testCase.memoryLimitMB,
+        });
+
+        // Update progress
+        setEvaluationResults({
+          loading: true,
+          progress: { current: i + 1, total: testCases.length },
+        });
+      }
+
+      const passedCount = results.filter((r) => r.status === "Passed").length;
+      setEvaluationResults({
+        loading: false,
+        results,
+        summary: {
+          passed: passedCount,
+          total: results.length,
+          percentage: Math.round((passedCount / results.length) * 100),
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      setEvaluationResults({ error: "Failed to evaluate test cases" });
+    } finally {
+      setIsEvaluating(false);
+    }
+  };
+
+  return (
+    <div className="glass-panel h-full flex flex-col overflow-hidden">
+      {/* Action Bar */}
+      <div className="flex items-center justify-between p-4 border-b border-neonCyan/20">
+        <div className="flex items-center gap-3">
+          <span className="text-xl">⚡</span>
+          <h2 className="text-xl font-bold text-neonCyan">Code Forge</h2>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <select
+            className="bg-black/30 text-white px-3 py-1.5 rounded border border-neonCyan/20 
+                       focus:border-neonCyan/50 focus:outline-none text-sm"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+          >
+            <option value="c">C</option>
+            <option value="cpp">C++</option>
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+          </select>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleRun}
+            disabled={isRunning}
+            className="px-4 py-1.5 bg-blue-500/20 text-blue-400 rounded border border-blue-400/50 
+                       hover:bg-blue-500/30 disabled:opacity-50 text-sm font-medium"
+          >
+            {isRunning ? "Running..." : "▶ Run"}
+          </motion.button>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleEvaluate}
+            disabled={isEvaluating}
+            className="px-4 py-1.5 bg-neonCyan/20 text-neonCyan rounded border border-neonCyan/50 
+                       hover:bg-neonCyan/30 disabled:opacity-50 text-sm font-medium neon-cyan-glow"
+          >
+            {isEvaluating ? "Evaluating..." : "✓ Evaluate"}
+          </motion.button>
+        </div>
+      </div>
+
+      {/* Monaco Editor */}
+      <div className="flex-1 overflow-hidden">
+        <Editor
+          height="100%"
+          language={language === "cpp" ? "cpp" : language}
+          value={code}
+          onChange={(value: string | undefined) => setCode(value || "")}
+          theme="vs-dark"
+          options={{
+            minimap: { enabled: false },
+            fontSize: 14,
+            lineNumbers: "on",
+            scrollBeyondLastLine: false,
+            automaticLayout: true,
+            tabSize: 4,
+          }}
+        />
+      </div>
+
+      {/* AI Assistant Bar */}
+      <div className="flex gap-2 p-3 border-t border-neonCyan/20 bg-black/20">
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          className="flex-1 py-2 bg-neonMagenta/10 text-neonMagenta rounded border border-neonMagenta/30 
+                     hover:bg-neonMagenta/20 text-sm font-medium disabled:opacity-30"
+          disabled={true}
+        >
+          🤔 Stuck? Analyze Code
+        </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          className="flex-1 py-2 bg-neonMagenta/10 text-neonMagenta rounded border border-neonMagenta/30 
+                     hover:bg-neonMagenta/20 text-sm font-medium disabled:opacity-30"
+          disabled={true}
+        >
+          💡 Need a fix? Show Solution
+        </motion.button>
+      </div>
+
+      {/* Tabs for Custom Input / Run Log */}
+      <div className="border-t border-neonCyan/20">
+        <div className="flex">
+          <button
+            onClick={() => setActiveTab("input")}
+            className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              activeTab === "input"
+                ? "bg-neonCyan/20 text-neonCyan border-t-2 border-neonCyan"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            Custom Input
+          </button>
+          <button
+            onClick={() => setActiveTab("log")}
+            className={`flex-1 py-2 text-sm font-medium transition-colors ${
+              activeTab === "log"
+                ? "bg-neonCyan/20 text-neonCyan border-t-2 border-neonCyan"
+                : "text-gray-400 hover:text-white"
+            }`}
+          >
+            Run Log
+          </button>
+        </div>
+
+        <div className="h-32">
+          {activeTab === "input" ? (
+            <textarea
+              className="w-full h-full bg-black/30 text-white p-3 resize-none focus:outline-none 
+                         font-mono text-sm"
+              placeholder="Enter custom input here..."
+              value={customInput}
+              onChange={(e) => setCustomInput(e.target.value)}
+            />
+          ) : (
+            <pre className="w-full h-full bg-black/30 text-white p-3 overflow-auto font-mono text-sm">
+              {runLog || "No output yet. Click 'Run' to execute your code."}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
