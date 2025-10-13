@@ -28,6 +28,10 @@ export default function ProblemPanel({
       return;
     }
 
+    // Ask for question name
+    const questionName = prompt("Name this problem:", "New Problem")?.trim();
+    if (!questionName) return; // User cancelled
+
     setError("");
     setIsGenerating(true);
 
@@ -39,6 +43,7 @@ export default function ProblemPanel({
           problemDescription: problemText,
           complexity,
           quantity,
+          questionName, // Pass the name
         }),
       });
 
@@ -50,7 +55,7 @@ export default function ProblemPanel({
       setTestCases(data.testCases);
       
       // Show success notification
-      alert(`✅ Success! Generated ${data.testCases.length} test cases`);
+      alert(`✅ Success! Generated ${data.testCases.length} test cases for "${questionName}"`);
     } catch (err) {
       setError("Oops! The AI assistant is currently unavailable. Please try again.");
       console.error(err);
@@ -85,9 +90,8 @@ export default function ProblemPanel({
             value={complexity}
             onChange={(e) => setComplexity(e.target.value)}
           >
-            <option value="Standard">Standard (Common Cases)</option>
-            <option value="Comprehensive">Comprehensive (+ Edge Cases)</option>
-            <option value="Performance">Performance (Large Inputs)</option>
+            <option value="Basic">Basic (Common test cases)</option>
+            <option value="Comprehensive">Comprehensive (All major edge cases)</option>
           </select>
         </div>
 

@@ -197,6 +197,8 @@ export default function CodePanel({
       }
 
       const passedCount = results.filter((r) => r.status === "Passed").length;
+      const totalTime = results.reduce((sum, r) => sum + (typeof r.time === 'number' ? r.time : parseFloat(r.time || '0')), 0);
+      
       setEvaluationResults({
         loading: false,
         results,
@@ -204,6 +206,7 @@ export default function CodePanel({
           passed: passedCount,
           total: results.length,
           percentage: Math.round((passedCount / results.length) * 100),
+          totalTime: totalTime.toFixed(2),
         },
       });
     } catch (err) {
@@ -378,19 +381,30 @@ export default function CodePanel({
       <div className="flex gap-2 p-3 border-t border-neonCyan/20 bg-black/20">
         <motion.button
           whileHover={{ scale: 1.02 }}
-          className="flex-1 py-2 bg-neonMagenta/10 text-neonMagenta rounded border border-neonMagenta/30 
-                     hover:bg-neonMagenta/20 text-sm font-medium disabled:opacity-30"
-          disabled={true}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => alert("💬 Ask Help feature coming soon! This will open a chat where you can ask the AI for hints without revealing the solution.")}
+          className="flex-1 py-2 bg-neonMagenta/20 text-neonMagenta rounded border border-neonMagenta/50 
+                     hover:bg-neonMagenta/30 text-sm font-medium"
         >
-          🤔 Stuck? Analyze Code
+          🤔 Ask for Hint
         </motion.button>
         <motion.button
           whileHover={{ scale: 1.02 }}
-          className="flex-1 py-2 bg-neonMagenta/10 text-neonMagenta rounded border border-neonMagenta/30 
-                     hover:bg-neonMagenta/20 text-sm font-medium disabled:opacity-30"
-          disabled={true}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => alert("💬 Get Solution feature coming soon! This will open a chat showing the corrected solution with explanations.")}
+          className="flex-1 py-2 bg-neonMagenta/20 text-neonMagenta rounded border border-neonMagenta/50 
+                     hover:bg-neonMagenta/30 text-sm font-medium"
         >
-          💡 Need a fix? Show Solution
+          💡 Get Solution
+        </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => alert("💬 Chat feature coming soon! This will open an AI assistant chat where you can ask any questions about your code.")}
+          className="px-4 py-2 bg-neonCyan/20 text-neonCyan rounded border border-neonCyan/50 
+                     hover:bg-neonCyan/30 text-sm font-medium"
+        >
+          💬 Chat
         </motion.button>
       </div>
 

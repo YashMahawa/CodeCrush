@@ -176,6 +176,14 @@ export default function EvaluationPanel({ results, isEvaluating }: EvaluationPan
               <div className="text-xs text-gray-400">
                 {results.summary.passed}/{results.summary.total}
               </div>
+              {results.summary.totalTime && (
+                <div className="text-xs text-neonCyan mt-1">
+                  {results.summary.totalTime}s total
+                  {parseFloat(results.summary.totalTime) > 10 && results.summary.percentage === 100 && (
+                    <div className="text-yellow-400 mt-0.5">⚡ Consider optimizing</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -240,7 +248,7 @@ export default function EvaluationPanel({ results, isEvaluating }: EvaluationPan
                   <div>
                     <div className="font-semibold text-white">Test Case #{result.testNumber}</div>
                     <div className="text-xs text-gray-400">
-                      Time: {typeof result.time === 'number' ? result.time.toFixed(3) : parseFloat(result.time || '0').toFixed(3)}s | Memory: {typeof result.memory === 'number' ? result.memory.toFixed(1) : parseFloat(result.memory || '0').toFixed(1)}MB
+                      {result.status}
                     </div>
                   </div>
                 </div>
@@ -291,27 +299,7 @@ export default function EvaluationPanel({ results, isEvaluating }: EvaluationPan
                         </div>
                       </div>
 
-                      {/* Stats for TLE/MLE */}
-                      {(result.status === "TLE" || result.status === "MLE") && (
-                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-2 text-sm">
-                          {result.status === "TLE" && (
-                            <div>
-                              Time Limit: {result.timeLimit}s | Your Time:{" "}
-                              <span className="text-brightRed font-bold">
-                                {typeof result.time === 'number' ? result.time.toFixed(3) : parseFloat(result.time || '0').toFixed(3)}s
-                              </span>
-                            </div>
-                          )}
-                          {result.status === "MLE" && (
-                            <div>
-                              Memory Limit: {result.memoryLimit}MB | Your Memory:{" "}
-                              <span className="text-brightRed font-bold">
-                                {typeof result.memory === 'number' ? result.memory.toFixed(1) : parseFloat(result.memory || '0').toFixed(1)}MB
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
+
                     </div>
                   </motion.div>
                 )}
