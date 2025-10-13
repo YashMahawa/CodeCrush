@@ -19,19 +19,25 @@
 ## ✨ Features
 
 ### 🧠 **AI Test Case Generation**
-Powered by Google Gemini 2.5 Flash with thinking mode:
+Powered by Google Gemini 2.5 Flash/Pro with thinking mode:
+- **Model Selection**: Choose between Flash (fast & reliable) or Pro (more capable)
 - **Basic** test cases for common scenarios (likely to pass with correct logic)
 - **Comprehensive** test cases with all major edge cases
 - Custom question naming for organized sessions
 - Automatic time/memory limit recommendations
+- Smart error handling with model switching suggestions
 
 ### 💬 **AI Chat Assistant**
 Get help without leaving the editor:
+- **Model Selection**: Choose between Gemini 2.5 Flash (fast) or 2.5 Pro (more capable)
+- **Syntax-Highlighted Code Blocks**: AI responses with code are beautifully formatted
+- **Interactive Code Actions**: Hover over code blocks to Copy or Replace your editor code
+- **Smart Error Handling**: Automatic suggestions to switch models if quota exceeded
 - Persistent chat history across sessions
 - Full conversation context maintained
 - Ask for hints, explanations, or solutions
+- Quick action buttons: "Ask for Hint", "Get Solution", "Chat"
 - Contextual awareness of your code and problem
-- Integrated Help tab alongside evaluation results
 
 ### ⚡ **Dual Execution Modes**
 Choose your execution environment:
@@ -118,12 +124,13 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - **Styling:** Tailwind CSS
 - **Animations:** Framer Motion
 - **Code Editor:** Monaco Editor (VS Code's editor)
-- **AI:** Google Gemini 2.5 Flash (with thinking mode & chat)
+- **AI:** Google Gemini 2.5 Flash/Pro (with thinking mode & chat)
 - **Code Execution:** 
   - Cloud: Judge0 API (RapidAPI)
   - Local: Native compilers (gcc/g++/python3/java)
 - **Storage:** Browser localStorage (no database needed)
-- **Markdown Rendering:** react-markdown with syntax highlighting
+- **Markdown Rendering:** react-markdown with react-syntax-highlighter
+- **Code Highlighting:** Prism with VS Code Dark Plus theme
 
 ---
 
@@ -136,12 +143,14 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 4. Your browser will automatically create a new session on first visit
 
 ### Workflow
-1. **Name Your Problem** → Enter problem description, name it when generating test cases
-2. **Generate Test Cases** → Choose Basic or Comprehensive complexity
-3. **Write Code** → Use Monaco editor with C/C++/Python/Java support
-4. **Execute** → Toggle Cloud ☁️ or Local 🖥️ mode, then Run or Evaluate
-5. **Get Help** → Click Help tab to chat with AI assistant
-6. **Track Time** → Use timer/stopwatch to monitor your practice
+1. **Select AI Model** → Choose Flash (fast) or Pro (powerful) from top-right dropdown
+2. **Name Your Problem** → Enter problem description, name it when generating test cases
+3. **Generate Test Cases** → Choose Basic or Comprehensive complexity
+4. **Write Code** → Use Monaco editor with C/C++/Python/Java support
+5. **Execute** → Toggle Cloud ☁️ or Local 🖥️ mode, then Run or Evaluate
+6. **Get Help** → Click Help tab or any chat button to open AI assistant
+   - Hover over AI code responses to Copy or Replace your code
+7. **Track Time** → Use timer/stopwatch to monitor your practice
 
 ### Session Management
 - Click hamburger menu (☰) to view all sessions
@@ -149,6 +158,15 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - Sessions auto-save every change
 - Switch between sessions anytime
 - Delete old sessions with 🗑️ button
+
+### AI Chat Code Blocks
+When the AI generates code in chat:
+- **Syntax Highlighting**: Automatic language detection with line numbers
+- **Copy Button**: Click to copy code to clipboard (shows ✓ confirmation)
+- **Replace Button**: Directly replace your editor code with AI's suggestion
+- **Language Badge**: Shows detected language in top-left corner
+- Buttons appear on hover at top-right of code block
+- Black background with neon cyan borders for clarity
 
 ### Data Storage
 - **Everything is stored locally** in your browser (localStorage)

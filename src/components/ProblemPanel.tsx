@@ -9,6 +9,7 @@ interface ProblemPanelProps {
   setTestCases: (cases: any[]) => void;
   isGenerating: boolean;
   setIsGenerating: (value: boolean) => void;
+  selectedModel: string;
 }
 
 export default function ProblemPanel({
@@ -17,6 +18,7 @@ export default function ProblemPanel({
   setTestCases,
   isGenerating,
   setIsGenerating,
+  selectedModel,
 }: ProblemPanelProps) {
   const [complexity, setComplexity] = useState("Standard");
   const [quantity, setQuantity] = useState(10);
@@ -44,20 +46,25 @@ export default function ProblemPanel({
           complexity,
           quantity,
           questionName, // Pass the name
+          model: selectedModel, // Pass the selected model
         }),
       });
 
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error("Failed to generate test cases");
+        const errorMsg = data.suggestion 
+          ? `${data.error}\n\n💡 ${data.suggestion}`
+          : data.error || "Failed to generate test cases";
+        throw new Error(errorMsg);
       }
 
-      const data = await response.json();
       setTestCases(data.testCases);
       
       // Show success notification
       alert(`✅ Success! Generated ${data.testCases.length} test cases for "${questionName}"`);
-    } catch (err) {
-      setError("Oops! The AI assistant is currently unavailable. Please try again.");
+    } catch (err: any) {
+      setError(err.message || "Oops! The AI assistant is currently unavailable. Please try again.");
       console.error(err);
     } finally {
       setIsGenerating(false);

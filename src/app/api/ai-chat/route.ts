@@ -6,9 +6,9 @@ const ai = new GoogleGenAI({
 });
 
 export async function POST(req: NextRequest) {
+  const { messages, code, language, problemText, testResults, model = "gemini-2.5-flash" } = await req.json();
+  
   try {
-    const { messages, code, language, problemText, testResults } = await req.json();
-
     // Build context
     let context = "You are an expert programming tutor helping a student with competitive programming.\n\n";
     
@@ -50,14 +50,17 @@ Now respond to the student's question.`
 
     const allMessages = [systemPrompt, ...conversationHistory];
 
-    console.log("🤖 Calling Gemini AI for chat assistance...");
+    console.log(`🤖 Calling Gemini AI (${model}) for chat assistance...`);
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp",
+      model: model,
       contents: allMessages,
       config: {
         temperature: 0.7,
         maxOutputTokens: 4000,
+        ...(model === "gemini-2.5-flash" && {
+          thinkingConfig: { thinkingBudget: 5000 }
+        })
       },
     });
 
@@ -67,10 +70,18 @@ Now respond to the student's question.`
     return NextResponse.json({ response: responseText });
   } catch (error: any) {
     console.error("❌ Error in AI chat:", error);
+    
+    const errorMessage = error.message || String(error);
+    const shouldSuggestFlash = model !== "gemini-2.5-flash" && 
+      (errorMessage.includes("404") || errorMessage.includes("not found") || errorMessage.includes("quota"));
+    
     return NextResponse.json(
       {
         error: "Failed to get AI response",
         details: error.message,
+        suggestion: shouldSuggestFlash 
+          ? "Try switching to Gemini 2.5 Flash in the model selector at the top."
+          : undefined,
       },
       { status: 500 }
     );

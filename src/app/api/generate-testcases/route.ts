@@ -12,8 +12,9 @@ const ai = new GoogleGenAI({
 });
 
 export async function POST(req: NextRequest) {
+  const { problemDescription, complexity, quantity, model = "gemini-2.5-flash" } = await req.json();
+  
   try {
-    const { problemDescription, complexity, quantity } = await req.json();
 
     // Validate input
     if (!problemDescription || problemDescription.trim().length < 10) {
@@ -67,18 +68,20 @@ Return ONLY a valid JSON array with NO markdown formatting, NO code blocks, NO e
 
 Generate ${quantity} test cases now. Remember: ONLY JSON array, nothing else.`;
 
-    // Call Gemini 2.5 Flash API with thinking mode enabled
-    console.log("🧠 Calling Gemini 2.5 Flash API to generate test cases...");
+    // Call Gemini API with thinking mode enabled for Flash
+    console.log(`🧠 Calling Gemini API (${model}) to generate test cases...`);
     
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: model,
       contents: prompt,
       config: {
         temperature: 0.7,
         maxOutputTokens: 8000,
-        thinkingConfig: {
-          thinkingBudget: 5000, // Enable thinking for better test case generation
-        },
+        ...(model === "gemini-2.5-flash" && {
+          thinkingConfig: {
+            thinkingBudget: 5000, // Enable thinking for better test case generation
+          }
+        })
       },
     });
 
@@ -144,11 +147,18 @@ Generate ${quantity} test cases now. Remember: ONLY JSON array, nothing else.`;
       cause: error.cause,
     });
     
+    const errorMessage = error.message || String(error);
+    const shouldSuggestFlash = model !== "gemini-2.5-flash" && 
+      (errorMessage.includes("404") || errorMessage.includes("not found") || errorMessage.includes("quota"));
+    
     return NextResponse.json(
       {
         error: "Failed to generate test cases. Please try again.",
         details: error.message || "Unknown error",
         apiKeySet: !!process.env.GEMINI_API_KEY,
+        suggestion: shouldSuggestFlash 
+          ? "Try switching to Gemini 2.5 Flash in the model selector at the top."
+          : undefined,
       },
       { status: 500 }
     );

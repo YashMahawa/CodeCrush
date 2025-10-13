@@ -3,12 +3,93 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+}
+
+// Custom CodeBlock component with copy and replace functionality
+function CodeBlock({ children, className, onReplace }: any) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [copied, setCopied] = useState(false);
+  
+  const match = /language-(\w+)/.exec(className || "");
+  const lang = match ? match[1] : "";
+  const codeString = String(children).replace(/\n$/, "");
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(codeString);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleReplace = () => {
+    if (confirm("Replace your current code with this AI-generated code?")) {
+      onReplace(codeString);
+    }
+  };
+
+  return (
+    <div
+      className="relative group my-3"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {lang && (
+        <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-black/80 text-neonCyan text-xs font-mono border border-neonCyan/30 rounded">
+          {lang}
+        </div>
+      )}
+      <div className="absolute top-2 right-2 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleCopy}
+          className="px-3 py-1.5 bg-neonCyan/20 text-neonCyan rounded border border-neonCyan/50 
+                     hover:bg-neonCyan/30 text-xs font-medium flex items-center gap-1 shadow-lg"
+        >
+          {copied ? (
+            <>
+              <span>✓</span> Copied
+            </>
+          ) : (
+            <>
+              <span>📋</span> Copy
+            </>
+          )}
+        </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={handleReplace}
+          className="px-3 py-1.5 bg-neonMagenta/20 text-neonMagenta rounded border border-neonMagenta/50 
+                     hover:bg-neonMagenta/30 text-xs font-medium flex items-center gap-1 shadow-lg"
+        >
+          <span>🔄</span> Replace
+        </motion.button>
+      </div>
+      <SyntaxHighlighter
+        language={lang || "text"}
+        style={vscDarkPlus}
+        customStyle={{
+          margin: 0,
+          borderRadius: "0.5rem",
+          background: "#000000",
+          border: "1px solid rgba(0, 255, 255, 0.3)",
+          padding: "1rem",
+          paddingTop: lang ? "2.5rem" : "1rem",
+        }}
+        showLineNumbers
+      >
+        {codeString}
+      </SyntaxHighlighter>
+    </div>
+  );
 }
 
 interface AIChatProps {
@@ -18,6 +99,8 @@ interface AIChatProps {
   testResults?: any;
   chatHistory: Message[];
   onUpdateChatHistory: (messages: Message[]) => void;
+  selectedModel: string;
+  setCode: (code: string) => void;
 }
 
 export default function AIChat({
@@ -27,6 +110,8 @@ export default function AIChat({
   testResults,
   chatHistory,
   onUpdateChatHistory,
+  selectedModel,
+  setCode,
 }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>(chatHistory);
   const [input, setInput] = useState("");
@@ -69,13 +154,17 @@ export default function AIChat({
           language,
           problemText,
           testResults,
+          model: selectedModel, // Pass the selected model
         }),
       });
 
       const data = await response.json();
 
       if (data.error) {
-        throw new Error(data.error);
+        const errorMsg = data.suggestion 
+          ? `${data.error}\n\n💡 ${data.suggestion}`
+          : data.error;
+        throw new Error(errorMsg);
       }
 
       const assistantMessage: Message = {
@@ -93,7 +182,7 @@ export default function AIChat({
       const errorMessage: Message = {
         id: `msg_${Date.now()}_${Math.random()}`,
         role: "assistant",
-        content: "Sorry, I encountered an error. Please try again.",
+        content: error.message || "Sorry, I encountered an error. Please try again.",
         timestamp: Date.now(),
       };
       const updatedMessages = [...newMessages, errorMessage];
@@ -189,7 +278,26 @@ export default function AIChat({
                     {message.role === "user" ? "You" : "AI Assistant"}
                   </div>
                   <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                    <ReactMarkdown
+                      components={{
+                        code({ node, inline, className, children, ...props }: any) {
+                          if (inline) {
+                            return (
+                              <code className="bg-black/50 px-1.5 py-0.5 rounded text-neonCyan text-sm" {...props}>
+                                {children}
+                              </code>
+                            );
+                          }
+                          return (
+                            <CodeBlock className={className} onReplace={setCode}>
+                              {children}
+                            </CodeBlock>
+                          );
+                        },
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
                   </div>
                 </div>
               </motion.div>

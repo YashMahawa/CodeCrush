@@ -13,6 +13,7 @@ interface CodePanelProps {
   setEvaluationResults: (results: any) => void;
   isEvaluating: boolean;
   setIsEvaluating: (value: boolean) => void;
+  setShowChat: (value: boolean) => void;
 }
 
 export default function CodePanel({
@@ -24,6 +25,7 @@ export default function CodePanel({
   setEvaluationResults,
   isEvaluating,
   setIsEvaluating,
+  setShowChat,
 }: CodePanelProps) {
   const [customInput, setCustomInput] = useState("");
   const [runLog, setRunLog] = useState("");
@@ -382,7 +384,7 @@ export default function CodePanel({
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => alert("💬 Ask Help feature coming soon! This will open a chat where you can ask the AI for hints without revealing the solution.")}
+          onClick={() => setShowChat(true)}
           className="flex-1 py-2 bg-neonMagenta/20 text-neonMagenta rounded border border-neonMagenta/50 
                      hover:bg-neonMagenta/30 text-sm font-medium"
         >
@@ -391,7 +393,7 @@ export default function CodePanel({
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => alert("💬 Get Solution feature coming soon! This will open a chat showing the corrected solution with explanations.")}
+          onClick={() => setShowChat(true)}
           className="flex-1 py-2 bg-neonMagenta/20 text-neonMagenta rounded border border-neonMagenta/50 
                      hover:bg-neonMagenta/30 text-sm font-medium"
         >
@@ -400,7 +402,7 @@ export default function CodePanel({
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => alert("💬 Chat feature coming soon! This will open an AI assistant chat where you can ask any questions about your code.")}
+          onClick={() => setShowChat(true)}
           className="px-4 py-2 bg-neonCyan/20 text-neonCyan rounded border border-neonCyan/50 
                      hover:bg-neonCyan/30 text-sm font-medium"
         >

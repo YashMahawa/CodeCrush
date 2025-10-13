@@ -8,6 +8,7 @@ import EvaluationPanel from "@/components/EvaluationPanel";
 import SessionSidebar from "@/components/SessionSidebar";
 import TimerStopwatch from "@/components/TimerStopwatch";
 import AIChat from "@/components/AIChat";
+import ModelSelector from "@/components/ModelSelector";
 import {
   createNewSession,
   getSession,
@@ -30,6 +31,7 @@ export default function Home() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatHistory, setChatHistory] = useState<any[]>([]);
+  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
 
   // Load last session on mount
   useEffect(() => {
@@ -169,19 +171,22 @@ export default function Home() {
         onNewSession={handleNewSession}
       />
       
-      {/* Logo Header + Timer/Stopwatch */}
+      {/* Logo Header + Model Selector + Timer/Stopwatch */}
       <header className="absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-4 z-10">
         <div className="w-64"></div> {/* Spacer for sidebar button */}
         
-        <div className="flex items-center gap-3">
-          <div className="text-4xl font-bold text-neonCyan flex items-center">
-            <span className="animate-pulse">&lt;</span>
-            <span className="mx-2">CodeCrush</span>
-            <span className="animate-pulse">&gt;</span>
-          </div>
+        <div className="text-4xl font-bold text-neonCyan flex items-center">
+          <span className="animate-pulse">&lt;</span>
+          <span className="mx-2">CodeCrush</span>
+          <span className="animate-pulse">&gt;</span>
         </div>
 
-        <div className="w-64 flex justify-end">
+        <div className="w-64 flex justify-end items-center gap-3">
+          <ModelSelector 
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+          />
+          
           <TimerStopwatch
             onTimerUpdate={handleTimerUpdate}
             onStopwatchUpdate={handleStopwatchUpdate}
@@ -203,6 +208,7 @@ export default function Home() {
             setTestCases={setTestCases}
             isGenerating={isGenerating}
             setIsGenerating={setIsGenerating}
+            selectedModel={selectedModel}
           />
         </div>
 
@@ -217,6 +223,7 @@ export default function Home() {
             setEvaluationResults={setEvaluationResults}
             isEvaluating={isEvaluating}
             setIsEvaluating={setIsEvaluating}
+            setShowChat={setShowChat}
           />
         </div>
 
@@ -255,6 +262,8 @@ export default function Home() {
                 testResults={evaluationResults}
                 chatHistory={chatHistory}
                 onUpdateChatHistory={setChatHistory}
+                selectedModel={selectedModel}
+                setCode={setCode}
               />
             ) : (
               <EvaluationPanel
