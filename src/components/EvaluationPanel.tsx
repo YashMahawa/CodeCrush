@@ -240,7 +240,7 @@ export default function EvaluationPanel({ results, isEvaluating }: EvaluationPan
                   <div>
                     <div className="font-semibold text-white">Test Case #{result.testNumber}</div>
                     <div className="text-xs text-gray-400">
-                      Time: {result.time.toFixed(3)}s | Memory: {result.memory.toFixed(1)}MB
+                      Time: {typeof result.time === 'number' ? result.time.toFixed(3) : parseFloat(result.time || '0').toFixed(3)}s | Memory: {typeof result.memory === 'number' ? result.memory.toFixed(1) : parseFloat(result.memory || '0').toFixed(1)}MB
                     </div>
                   </div>
                 </div>
@@ -298,7 +298,7 @@ export default function EvaluationPanel({ results, isEvaluating }: EvaluationPan
                             <div>
                               Time Limit: {result.timeLimit}s | Your Time:{" "}
                               <span className="text-brightRed font-bold">
-                                {result.time.toFixed(3)}s
+                                {typeof result.time === 'number' ? result.time.toFixed(3) : parseFloat(result.time || '0').toFixed(3)}s
                               </span>
                             </div>
                           )}
@@ -306,7 +306,7 @@ export default function EvaluationPanel({ results, isEvaluating }: EvaluationPan
                             <div>
                               Memory Limit: {result.memoryLimit}MB | Your Memory:{" "}
                               <span className="text-brightRed font-bold">
-                                {result.memory.toFixed(1)}MB
+                                {typeof result.memory === 'number' ? result.memory.toFixed(1) : parseFloat(result.memory || '0').toFixed(1)}MB
                               </span>
                             </div>
                           )}

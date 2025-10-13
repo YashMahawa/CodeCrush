@@ -183,8 +183,8 @@ export default function CodePanel({
           input: testCase.input,
           expectedOutput: testCase.expectedOutput,
           actualOutput: data.stdout || "",
-          time: data.time || 0,
-          memory: data.memory || 0,
+          time: typeof data.time === 'number' ? data.time : parseFloat(data.time || '0'),
+          memory: typeof data.memory === 'number' ? data.memory : parseFloat(data.memory || '0'),
           timeLimit: testCase.timeLimitSeconds,
           memoryLimit: testCase.memoryLimitMB,
         });
