@@ -15,7 +15,6 @@ interface Message {
 
 // Custom CodeBlock component with copy and replace functionality
 function CodeBlock({ children, className, onReplace }: any) {
-  const [isHovered, setIsHovered] = useState(false);
   const [copied, setCopied] = useState(false);
   
   const match = /language-(\w+)/.exec(className || "");
@@ -35,11 +34,7 @@ function CodeBlock({ children, className, onReplace }: any) {
   };
 
   return (
-    <div
-      className="relative group my-3"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="relative group my-3">
       {lang && (
         <div className="absolute top-2 left-2 z-10 px-2 py-1 bg-black/80 text-neonCyan text-xs font-mono border border-neonCyan/30 rounded">
           {lang}
@@ -280,14 +275,29 @@ export default function AIChat({
                   <div className="prose prose-invert prose-sm max-w-none">
                     <ReactMarkdown
                       components={{
-                        code({ node, inline, className, children, ...props }: any) {
+                        code({ inline, className, children, ...props }: any) {
+                          const codeContent = String(children).replace(/\n$/, "");
+                          const hasLanguage = className && /language-/.test(className);
+
                           if (inline) {
                             return (
-                              <code className="bg-black/50 px-1.5 py-0.5 rounded text-neonCyan text-sm" {...props}>
+                              <code
+                                className="bg-black/50 px-1.5 py-0.5 rounded text-neonCyan text-sm"
+                                {...props}
+                              >
                                 {children}
                               </code>
                             );
                           }
+
+                          if (!hasLanguage) {
+                            return (
+                              <div className="inline-block bg-black/40 border border-neonCyan/30 text-neonCyan px-3 py-1 rounded-md text-sm font-mono">
+                                {codeContent}
+                              </div>
+                            );
+                          }
+
                           return (
                             <CodeBlock className={className} onReplace={setCode}>
                               {children}

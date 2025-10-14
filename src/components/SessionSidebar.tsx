@@ -10,12 +10,14 @@ import {
 
 interface SessionSidebarProps {
   currentSessionId: string;
+  refreshKey: number;
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
 }
 
 export default function SessionSidebar({
   currentSessionId,
+  refreshKey,
   onSelectSession,
   onNewSession,
 }: SessionSidebarProps) {
@@ -42,7 +44,7 @@ export default function SessionSidebar({
   // Refresh sessions when currentSessionId changes
   useEffect(() => {
     loadSessions();
-  }, [currentSessionId]);
+  }, [currentSessionId, refreshKey]);
 
   const handleDelete = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
@@ -120,9 +122,9 @@ export default function SessionSidebar({
               className="fixed left-0 top-0 bottom-0 w-80 bg-darkBg border-r border-neonCyan/20 z-50 flex flex-col overflow-hidden"
             >
               {/* Header */}
-              <div className="p-4 border-b border-neonCyan/20 bg-black/30">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-xl font-bold text-neonCyan">Sessions</h2>
+              <div className="px-4 pt-4 pb-0 border-b border-neonCyan/20 bg-black/30">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-neonCyan ml-24">History</h2>
                   <button
                     onClick={() => setIsOpen(false)}
                     className="text-gray-400 hover:text-white transition-colors"
@@ -139,7 +141,7 @@ export default function SessionSidebar({
                     onNewSession();
                     setIsOpen(false);
                   }}
-                  className="w-full px-4 py-2 bg-neonCyan/20 text-neonCyan rounded border border-neonCyan/50 hover:bg-neonCyan/30 transition-colors font-medium flex items-center justify-center gap-2"
+                  className="w-full px-4 py-2.5 mb-4 bg-neonCyan/20 text-neonCyan rounded-lg border border-neonCyan/50 hover:bg-neonCyan/30 transition-colors font-medium flex items-center justify-center gap-2"
                 >
                   <span className="text-xl">+</span>
                   New Problem
@@ -152,7 +154,7 @@ export default function SessionSidebar({
                   <div className="text-center text-gray-500 mt-8 px-4">
                     <p className="text-4xl mb-2">📝</p>
                     <p>No sessions yet</p>
-                    <p className="text-sm mt-1">Click "New Problem" to start</p>
+                    <p className="text-sm mt-1">Click “New Problem” to start</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -173,7 +175,7 @@ export default function SessionSidebar({
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
                             <h3 className="font-semibold text-white truncate text-sm">
-                              {session.name}
+                              {session.name || "Untitled Problem"}
                             </h3>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-xs text-gray-400">

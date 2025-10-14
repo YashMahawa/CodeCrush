@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 interface ProblemPanelProps {
@@ -10,6 +10,8 @@ interface ProblemPanelProps {
   isGenerating: boolean;
   setIsGenerating: (value: boolean) => void;
   selectedModel: string;
+  problemName: string;
+  onProblemNameChange: (name: string) => void;
 }
 
 export default function ProblemPanel({
@@ -19,20 +21,40 @@ export default function ProblemPanel({
   isGenerating,
   setIsGenerating,
   selectedModel,
+  problemName,
+  onProblemNameChange,
 }: ProblemPanelProps) {
-  const [complexity, setComplexity] = useState("Standard");
+  const [complexity, setComplexity] = useState("Basic");
   const [quantity, setQuantity] = useState(10);
   const [error, setError] = useState("");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState(problemName);
+
+  useEffect(() => {
+    setTempName(problemName);
+  }, [problemName]);
+
+  const handleNameSubmit = () => {
+    const normalized = tempName.trim() || "Untitled Problem";
+    onProblemNameChange(normalized);
+    setIsEditingName(false);
+  };
+
+  const handleNameKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleNameSubmit();
+    } else if (event.key === "Escape") {
+      setTempName(problemName);
+      setIsEditingName(false);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!problemText.trim()) {
       setError("Please enter a problem description first!");
       return;
     }
-
-    // Ask for question name
-    const questionName = prompt("Name this problem:", "New Problem")?.trim();
-    if (!questionName) return; // User cancelled
 
     setError("");
     setIsGenerating(true);
@@ -45,7 +67,6 @@ export default function ProblemPanel({
           problemDescription: problemText,
           complexity,
           quantity,
-          questionName, // Pass the name
           model: selectedModel, // Pass the selected model
         }),
       });
@@ -60,9 +81,12 @@ export default function ProblemPanel({
       }
 
       setTestCases(data.testCases);
+      if (data.name) {
+        onProblemNameChange(data.name);
+      }
       
       // Show success notification
-      alert(`✅ Success! Generated ${data.testCases.length} test cases for "${questionName}"`);
+      alert(`✅ Success! Generated ${data.testCases.length} test cases for "${data.name || problemName}"`);
     } catch (err: any) {
       setError(err.message || "Oops! The AI assistant is currently unavailable. Please try again.");
       console.error(err);
@@ -73,10 +97,44 @@ export default function ProblemPanel({
 
   return (
     <div className="glass-panel h-full flex flex-col p-6 overflow-hidden">
-      <h2 className="text-2xl font-bold text-neonCyan mb-4 flex items-center gap-2">
-        <span>📝</span>
-        <span>Problem Sphere</span>
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">📝</span>
+          {isEditingName ? (
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                value={tempName}
+                onChange={(e) => setTempName(e.target.value)}
+                onBlur={handleNameSubmit}
+                onKeyDown={handleNameKeyDown}
+                className="bg-black/40 text-white px-3 py-2 rounded border border-neonCyan/40 focus:border-neonCyan/70 focus:outline-none text-lg"
+              />
+            </div>
+          ) : (
+            <h2 className="text-2xl font-bold text-neonCyan flex items-center gap-3">
+              <span className="truncate max-w-[14rem]" title={problemName}>
+                {problemName || "Untitled Problem"}
+              </span>
+            </h2>
+          )}
+        </div>
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => {
+            if (isEditingName) {
+              handleNameSubmit();
+            } else {
+              setTempName(problemName);
+              setIsEditingName(true);
+            }
+          }}
+          className="px-3 py-2 bg-black/30 text-neonCyan border border-neonCyan/30 rounded-lg hover:border-neonCyan/60 transition-colors text-sm flex items-center gap-2"
+        >
+          ✏️ <span>{isEditingName ? "Save" : "Edit"}</span>
+        </motion.button>
+      </div>
 
       <textarea
         className="flex-1 w-full bg-black/30 text-white p-4 rounded-lg border border-neonCyan/20 

@@ -311,8 +311,9 @@ export default function CodePanel({
           </label>
 
           <select
-            className="bg-black/30 text-white px-3 py-1.5 rounded border border-neonCyan/20 
-                       focus:border-neonCyan/50 focus:outline-none text-sm"
+            className="bg-black/30 text-white px-3 py-1.5 rounded-lg border border-neonCyan/50 
+                       hover:bg-neonCyan/10 focus:border-neonCyan focus:outline-none text-sm 
+                       transition-colors cursor-pointer"
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
           >

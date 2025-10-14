@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import HolographicBackground from "@/components/HolographicBackground";
 import ProblemPanel from "@/components/ProblemPanel";
 import CodePanel from "@/components/CodePanel";
@@ -15,16 +15,40 @@ import {
   saveSession,
   getActiveSessionId,
   setActiveSessionId,
-  generateSessionName,
+  getLastUsedLanguage,
+  setLastUsedLanguage,
   type Session,
+  type TimerSnapshot,
+  type StopwatchSnapshot,
 } from "@/lib/sessionStorage";
+import { cloneDefaultSnippets, getDefaultSnippet } from "@/lib/codeSnippets";
+
+const createDefaultTimerState = (): TimerSnapshot => ({
+  totalSeconds: 0,
+  remainingSeconds: 0,
+  status: "idle",
+  startedAt: null,
+});
+
+const createDefaultStopwatchState = (): StopwatchSnapshot => ({
+  elapsedSeconds: 0,
+  status: "idle",
+  startedAt: null,
+});
+
+type ToastNotification = {
+  id: string;
+  message: string;
+};
 
 export default function Home() {
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
   const [problemText, setProblemText] = useState("");
   const [testCases, setTestCases] = useState<any[]>([]);
-  const [code, setCode] = useState("// Write your code here\n");
-  const [language, setLanguage] = useState("cpp");
+  const [codeByLanguage, setCodeByLanguage] = useState<Record<string, string>>(() =>
+    cloneDefaultSnippets()
+  );
+  const [language, setLanguage] = useState(() => getLastUsedLanguage() ?? "c");
   const [evaluationResults, setEvaluationResults] = useState<any>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -32,6 +56,89 @@ export default function Home() {
   const [showChat, setShowChat] = useState(false);
   const [chatHistory, setChatHistory] = useState<any[]>([]);
   const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const [problemName, setProblemName] = useState("New Problem");
+  const [timerState, setTimerState] = useState<TimerSnapshot>(() => createDefaultTimerState());
+  const [stopwatchState, setStopwatchState] = useState<StopwatchSnapshot>(() =>
+    createDefaultStopwatchState()
+  );
+  const [notifications, setNotifications] = useState<ToastNotification[]>([]);
+  const notificationTimeouts = useRef<Record<string, number>>({});
+  const lastSavedSnapshot = useRef<string>("");
+
+  const currentCode = codeByLanguage[language] ?? getDefaultSnippet(language);
+
+  const pushNotification = useCallback((message: string) => {
+    const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setNotifications((prev) => [...prev, { id, message }]);
+
+    if (typeof window !== "undefined") {
+      const timeoutId = window.setTimeout(() => {
+        setNotifications((prev) => prev.filter((note) => note.id !== id));
+        if (notificationTimeouts.current[id]) {
+          window.clearTimeout(notificationTimeouts.current[id]);
+          delete notificationTimeouts.current[id];
+        }
+      }, 4000);
+
+      notificationTimeouts.current[id] = timeoutId;
+    }
+  }, []);
+
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((note) => note.id !== id));
+    if (typeof window !== "undefined") {
+      const timeoutId = notificationTimeouts.current[id];
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+        delete notificationTimeouts.current[id];
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === "undefined") return;
+      Object.values(notificationTimeouts.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      notificationTimeouts.current = {};
+    };
+  }, []);
+
+  const playTimerSound = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const audioContext: AudioContext = new AudioContextClass();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    if (audioContext.state === "suspended") {
+      audioContext.resume().catch(() => {});
+    }
+
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.4);
+
+    oscillator.onended = () => {
+      gainNode.disconnect();
+      oscillator.disconnect();
+      audioContext.close().catch(() => {});
+    };
+  }, []);
+
+  const handleTimerFinished = useCallback(() => {
+    playTimerSound();
+    pushNotification("⏰ Time's up! Great work—take a breather.");
+  }, [playTimerSound, pushNotification]);
 
   // Load last session on mount
   useEffect(() => {
@@ -50,10 +157,18 @@ export default function Home() {
 
     setCurrentSession(session);
     setProblemText(session.problem);
-    setCode(session.code);
+    setCodeByLanguage({
+      ...cloneDefaultSnippets(),
+      ...session.codeByLanguage,
+    });
     setLanguage(session.language);
+  setLastUsedLanguage(session.language);
+    setLastUsedLanguage(session.language);
     setTestCases(session.testCases);
     setChatHistory(session.chatHistory || []);
+    setProblemName(session.name || "New Problem");
+    setTimerState(session.timerState ?? createDefaultTimerState());
+    setStopwatchState(session.stopwatchState ?? createDefaultStopwatchState());
     if (session.lastEvaluation) {
       setEvaluationResults(session.lastEvaluation);
     }
@@ -64,13 +179,35 @@ export default function Home() {
   useEffect(() => {
     if (!isInitialized || !currentSession) return;
 
-    const updatedSession: Session = {
-      ...currentSession,
-      problem: problemText,
-      code,
+    const snapshot = JSON.stringify({
+      id: currentSession.id,
+      problemName,
+      problemText,
+      codeByLanguage,
       language,
       testCases,
       chatHistory,
+      evaluationResults,
+      timerState,
+      stopwatchState,
+    });
+
+    if (lastSavedSnapshot.current === snapshot) {
+      return;
+    }
+
+    lastSavedSnapshot.current = snapshot;
+
+    const updatedSession: Session = {
+      ...currentSession,
+      name: problemName || "Untitled Problem",
+      problem: problemText,
+      codeByLanguage,
+      language,
+      testCases,
+      chatHistory,
+      timerState,
+      stopwatchState,
       lastEvaluation: evaluationResults?.results
         ? {
             results: evaluationResults.results,
@@ -81,21 +218,19 @@ export default function Home() {
 
     saveSession(updatedSession);
     setCurrentSession(updatedSession);
-  }, [problemText, code, language, testCases, evaluationResults, chatHistory]);
-
-  // Auto-generate session name when problem changes
-  useEffect(() => {
-    if (!isInitialized || !currentSession || !problemText || currentSession.name !== "New Problem") return;
-
-    const timer = setTimeout(async () => {
-      const newName = await generateSessionName(problemText);
-      const updatedSession = { ...currentSession, name: newName };
-      saveSession(updatedSession);
-      setCurrentSession(updatedSession);
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [problemText]);
+  }, [
+    isInitialized,
+    currentSession,
+    problemName,
+    problemText,
+    codeByLanguage,
+    language,
+    testCases,
+    evaluationResults,
+    chatHistory,
+    timerState,
+    stopwatchState,
+  ]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
     const session = getSession(sessionId);
@@ -103,54 +238,78 @@ export default function Home() {
 
     setCurrentSession(session);
     setProblemText(session.problem);
-    setCode(session.code);
+    setCodeByLanguage({
+      ...cloneDefaultSnippets(),
+      ...session.codeByLanguage,
+    });
     setLanguage(session.language);
+  setLastUsedLanguage(session.language);
     setTestCases(session.testCases);
     setChatHistory(session.chatHistory || []);
     setEvaluationResults(session.lastEvaluation || null);
+    setTimerState(session.timerState ?? createDefaultTimerState());
+    setStopwatchState(session.stopwatchState ?? createDefaultStopwatchState());
     setActiveSessionId(session.id);
+    setProblemName(session.name || "New Problem");
   }, []);
 
   const handleNewSession = useCallback(() => {
     const session = createNewSession();
     saveSession(session);
     setCurrentSession(session);
-    setProblemText("");
-    setCode("// Write your code here\n");
-    setLanguage("cpp");
-    setTestCases([]);
-    setChatHistory([]);
-    setEvaluationResults(null);
+    setProblemText(session.problem);
+    setCodeByLanguage({
+      ...cloneDefaultSnippets(),
+      ...session.codeByLanguage,
+    });
+    setLanguage(session.language);
+    setTestCases(session.testCases);
+    setChatHistory(session.chatHistory || []);
+    setEvaluationResults(session.lastEvaluation || null);
+    setTimerState(session.timerState ?? createDefaultTimerState());
+    setStopwatchState(session.stopwatchState ?? createDefaultStopwatchState());
     setActiveSessionId(session.id);
+    setProblemName(session.name || "New Problem");
   }, []);
 
-  const handleTimerUpdate = useCallback(
-    (minutes: number | null, startedAt: number | null) => {
-      if (!currentSession) return;
-      const updatedSession = {
-        ...currentSession,
-        timerMinutes: minutes || undefined,
-        timerStartedAt: startedAt || undefined,
-      };
-      saveSession(updatedSession);
-      setCurrentSession(updatedSession);
+  const handleProblemNameChange = useCallback(
+    (name: string) => {
+      setProblemName(name);
     },
-    [currentSession]
+    []
   );
 
-  const handleStopwatchUpdate = useCallback(
-    (startedAt: number | null, elapsed: number) => {
-      if (!currentSession) return;
-      const updatedSession = {
-        ...currentSession,
-        stopwatchStartedAt: startedAt || undefined,
-        stopwatchElapsed: elapsed,
-      };
-      saveSession(updatedSession);
-      setCurrentSession(updatedSession);
+  const handleCodeChange = useCallback(
+    (updatedCode: string) => {
+      setCodeByLanguage((prev) => ({
+        ...prev,
+        [language]: updatedCode,
+      }));
     },
-    [currentSession]
+    [language]
   );
+
+  const handleLanguageChange = useCallback((nextLanguage: string) => {
+    setLanguage(nextLanguage);
+    setLastUsedLanguage(nextLanguage);
+    setCodeByLanguage((prev) => {
+      if (prev[nextLanguage] !== undefined) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [nextLanguage]: getDefaultSnippet(nextLanguage),
+      };
+    });
+  }, []);
+
+  const handleTimerStateChange = useCallback((nextState: TimerSnapshot) => {
+    setTimerState(nextState);
+  }, []);
+
+  const handleStopwatchStateChange = useCallback((nextState: StopwatchSnapshot) => {
+    setStopwatchState(nextState);
+  }, []);
 
   if (!isInitialized || !currentSession) {
     return (
@@ -164,9 +323,30 @@ export default function Home() {
     <main className="relative w-screen h-screen overflow-hidden">
       <HolographicBackground />
 
+      {notifications.length > 0 && (
+        <div className="fixed top-20 right-6 z-50 flex flex-col gap-2 pointer-events-none">
+          {notifications.map((note) => (
+            <div
+              key={note.id}
+              className="pointer-events-auto glass-panel border border-neonCyan/40 bg-black/70 backdrop-blur-xl text-neonCyan px-4 py-3 rounded-lg shadow-lg flex items-start gap-3"
+            >
+              <div className="text-sm font-medium leading-snug">{note.message}</div>
+              <button
+                onClick={() => dismissNotification(note.id)}
+                className="ml-auto text-neonCyan/70 hover:text-neonCyan transition-colors"
+                aria-label="Dismiss notification"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Session Sidebar */}
       <SessionSidebar
         currentSessionId={currentSession.id}
+        refreshKey={currentSession.updatedAt}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
       />
@@ -188,12 +368,11 @@ export default function Home() {
           />
           
           <TimerStopwatch
-            onTimerUpdate={handleTimerUpdate}
-            onStopwatchUpdate={handleStopwatchUpdate}
-            initialTimerMinutes={currentSession.timerMinutes}
-            initialTimerStartedAt={currentSession.timerStartedAt}
-            initialStopwatchStartedAt={currentSession.stopwatchStartedAt}
-            initialStopwatchElapsed={currentSession.stopwatchElapsed}
+            timerState={timerState}
+            stopwatchState={stopwatchState}
+            onTimerStateChange={handleTimerStateChange}
+            onStopwatchStateChange={handleStopwatchStateChange}
+            onTimerFinished={handleTimerFinished}
           />
         </div>
       </header>
@@ -209,16 +388,18 @@ export default function Home() {
             isGenerating={isGenerating}
             setIsGenerating={setIsGenerating}
             selectedModel={selectedModel}
+            problemName={problemName}
+            onProblemNameChange={handleProblemNameChange}
           />
         </div>
 
         {/* Middle Panel - Code */}
         <div className="w-1/3 flex flex-col">
           <CodePanel
-            code={code}
-            setCode={setCode}
+            code={currentCode}
+            setCode={handleCodeChange}
             language={language}
-            setLanguage={setLanguage}
+            setLanguage={handleLanguageChange}
             testCases={testCases}
             setEvaluationResults={setEvaluationResults}
             isEvaluating={isEvaluating}
@@ -229,9 +410,9 @@ export default function Home() {
 
         {/* Right Panel - Evaluation / Help */}
         <div className="w-1/3 flex flex-col">
-          <div className="h-full flex flex-col relative">
+          <div className="h-full flex flex-col">
             {/* Tab Buttons */}
-            <div className="absolute top-0 right-0 z-20 flex gap-2 p-2">
+            <div className="flex justify-end gap-2 mb-3">
               <button
                 onClick={() => setShowChat(false)}
                 className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
@@ -256,14 +437,14 @@ export default function Home() {
 
             {showChat ? (
               <AIChat
-                code={code}
+                code={currentCode}
                 language={language}
                 problemText={problemText}
                 testResults={evaluationResults}
                 chatHistory={chatHistory}
                 onUpdateChatHistory={setChatHistory}
                 selectedModel={selectedModel}
-                setCode={setCode}
+                setCode={handleCodeChange}
               />
             ) : (
               <EvaluationPanel

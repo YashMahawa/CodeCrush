@@ -15,9 +15,9 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
     <select
       value={selectedModel}
       onChange={(e) => onModelChange(e.target.value)}
-      className="bg-black/30 text-white px-3 py-1.5 rounded border border-neonMagenta/30 
-                 focus:border-neonMagenta/50 focus:outline-none text-sm cursor-pointer
-                 hover:border-neonMagenta/40 transition-colors"
+      className="bg-black/30 text-white px-3 py-1.5 rounded-lg border border-neonMagenta/50 
+                 hover:bg-neonMagenta/10 focus:border-neonMagenta focus:outline-none text-sm cursor-pointer
+                 transition-colors"
     >
       {models.map((model) => (
         <option key={model.value} value={model.value} className="bg-gray-900">

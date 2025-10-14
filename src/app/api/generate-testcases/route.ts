@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
 const apiKey = process.env.GEMINI_API_KEY;
 
 if (!apiKey) {
@@ -12,11 +16,16 @@ const ai = new GoogleGenAI({
 });
 
 export async function POST(req: NextRequest) {
-  const { problemDescription, complexity, quantity, model = "gemini-2.5-flash" } = await req.json();
-  
+  let modelUsed = "gemini-2.5-flash";
   try {
+    const {
+      problemDescription,
+      complexity,
+      quantity,
+      model = "gemini-2.5-flash",
+    } = await req.json();
+    modelUsed = model;
 
-    // Validate input
     if (!problemDescription || problemDescription.trim().length < 10) {
       return NextResponse.json(
         { error: "Problem description must be at least 10 characters" },
@@ -24,119 +33,124 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const normalizedQuantity = Number(quantity) || 10;
+    const effectiveComplexity =
+      complexity === "Comprehensive" ? "Comprehensive" : "Basic";
+
     const complexityInstructions: Record<string, string> = {
-      Standard:
-        "Include common test cases and basic edge cases (e.g., single element, small arrays, typical inputs).",
+      Basic:
+        "Include common happy-path and edge scenarios (single element, empty input, small arrays, typical values).",
       Comprehensive:
-        "Include ALL edge cases: empty inputs, single elements, maximum values, negative numbers, duplicates, boundary conditions, special characters, and corner cases.",
-      Performance:
-        "Focus on LARGE inputs to test time complexity. Use arrays with 10^4 to 10^5 elements, very long strings, deep recursion depths, and stress-test scenarios.",
+        "Include ALL major edge cases: empty inputs, single elements, maximal constraints, negative numbers, duplicates, boundary conditions, stress tests, and tricky corner cases.",
     };
 
-    const prompt = `You are a competitive programming expert and test case generator. Generate exactly ${quantity} diverse test cases for the following problem.
+    const fallbackName = (() => {
+      const firstLine = problemDescription.split("\n")[0].trim();
+      if (!firstLine) return "Untitled Problem";
+      return firstLine.length > 80 ? `${firstLine.slice(0, 77)}...` : firstLine;
+    })();
 
-**Problem Description:**
+    const prompt = `You are a competitive programming expert. Produce a JSON object containing a short descriptive problem name and ${normalizedQuantity} diverse, fully-specified test cases for the following problem.
+
+Problem Description:
 ${problemDescription}
 
-**Complexity Level:** ${complexity}
-${complexityInstructions[complexity]}
+Complexity Level: ${effectiveComplexity}
+${complexityInstructions[effectiveComplexity]}
 
-**CRITICAL REQUIREMENTS:**
-1. Generate VALID, WORKING test cases with correct expected outputs
-2. Keep test inputs REASONABLE in size - avoid generating massive test cases with 100+ lines
-3. For arrays/matrices, use small to medium sizes (1-20 elements typically, max 50 for performance tests)
-4. Time limits should allow standard O(n) or O(n log n) solutions but prevent O(n³) algorithms
-5. For simple problems: 1-2 seconds time limit
-6. For problems with higher complexity: 2-3 seconds time limit
-7. Memory limit is typically 256MB unless the problem requires large data structures (then use 512MB)
-8. Make sure inputs and outputs are EXACTLY as they would appear in stdin/stdout
-9. Include newlines (\\n) where needed in multi-line inputs/outputs
-10. Test cases should progressively increase in difficulty
-11. IMPORTANT: Do NOT use string concatenation (like "...") in your JSON. Provide COMPLETE, ACTUAL test data.
+RESPONSE FORMAT (MANDATORY):
+{
+  "name": "Concise descriptive title (max 60 characters)",
+  "testCases": [
+    {
+      "input": "stdin for the test case",
+      "expectedOutput": "stdout for the correct solution",
+      "timeLimitSeconds": 2.0,
+      "memoryLimitMB": 256
+    }
+  ]
+}
 
-**Output Format:**
-Return ONLY a valid JSON array with NO markdown formatting, NO code blocks, NO explanations, NO ellipsis (...). Just the raw, complete, parseable JSON array:
+RULES:
+1. Return ONLY raw JSON (no markdown, no code fences, no explanations).
+2. Provide exactly ${normalizedQuantity} test cases.
+3. Inputs must be fully written out (no ellipsis or descriptive text).
+4. Outputs must match the exact formatting a judge expects (including newlines).
+5. Keep inputs reasonable in size (max ~50 tokens/elements per test).
+6. Time limits: 1-2 seconds for simple problems, up to 3 seconds for heavy cases.
+7. Memory limits: typically 256MB, at most 512MB when justified.
+8. The name should be unique, specific, and reflect the core challenge.
+`;
 
-[
-  {
-    "input": "actual input string exactly as it appears in stdin",
-    "expectedOutput": "correct output string exactly as it appears in stdout",
-    "timeLimitSeconds": 2.0,
-    "memoryLimitMB": 256
-  }
-]
-
-Generate ${quantity} test cases now. Remember: ONLY JSON array, nothing else.`;
-
-    // Call Gemini API with thinking mode enabled for Flash
     console.log(`🧠 Calling Gemini API (${model}) to generate test cases...`);
-    
+
     const response = await ai.models.generateContent({
-      model: model,
+      model,
       contents: prompt,
       config: {
         temperature: 0.7,
         maxOutputTokens: 8000,
-        ...(model === "gemini-2.5-flash" && {
+  ...(model === "gemini-2.5-flash" && {
           thinkingConfig: {
-            thinkingBudget: 5000, // Enable thinking for better test case generation
-          }
-        })
+            thinkingBudget: 5000,
+          },
+        }),
       },
     });
 
     console.log("✅ Received response from Gemini");
     let text = response.text || "";
 
-    // Clean up response - remove markdown code blocks if present
-    text = text
-      .replace(/```json\n?/g, "")
-      .replace(/```\n?/g, "")
-      .trim();
+    text = text.trim().replace(/^```json\s*/i, "").replace(/```$/i, "");
 
-    // Try to parse directly first (most common case)
-    let testCases;
+    let parsed: any = null;
+
+    const attemptParse = (raw: string) => {
+      const cleaned = raw.trim();
+      if (!cleaned) return null;
+      return JSON.parse(cleaned);
+    };
+
     try {
-      testCases = JSON.parse(text);
-      console.log(`✅ Successfully parsed ${testCases.length} test cases`);
-    } catch (parseError: any) {
-      console.log("Direct parse failed, trying extraction...");
-      console.log("Parse error:", parseError.message);
-      console.log("First 200 chars of response:", text.substring(0, 200));
-      console.log("Last 200 chars of response:", text.substring(text.length - 200));
-      
-      // If direct parse fails, try to extract JSON array
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        console.error("Could not extract JSON from response:", text.substring(0, 500));
-        throw new Error("Invalid response format from AI");
-      }
-      
-      try {
-        testCases = JSON.parse(jsonMatch[0]);
-        console.log(`✅ Successfully parsed ${testCases.length} test cases after extraction`);
-      } catch (e2: any) {
-        console.error("Failed to parse extracted JSON:", e2.message);
-        throw new Error("Invalid response format from AI");
+      parsed = attemptParse(text);
+    } catch (error) {
+      console.log("Direct parse failed, attempting extraction", (error as Error).message);
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          parsed = attemptParse(jsonMatch[0]);
+        } catch (nestedError) {
+          console.error("Failed to parse extracted JSON:", (nestedError as Error).message);
+        }
       }
     }
 
-    // Validate structure
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Invalid response format from AI");
+    }
+
+    const { name, testCases } = parsed;
+
     if (!Array.isArray(testCases) || testCases.length === 0) {
       throw new Error("Invalid test cases format");
     }
 
-    // Validate each test case has required fields
     for (const tc of testCases) {
-      if (!tc.input || !tc.expectedOutput || !tc.timeLimitSeconds || !tc.memoryLimitMB) {
+      if (!tc?.input || !tc?.expectedOutput || !tc?.timeLimitSeconds || !tc?.memoryLimitMB) {
         throw new Error("Test case missing required fields");
       }
     }
 
-    console.log(`✅ Successfully generated ${testCases.length} test cases`);
+    const resolvedName =
+      typeof name === "string" && name.trim().length > 0 ? name.trim() : fallbackName;
+
+    console.log(
+      `✅ Successfully generated ${testCases.length} test cases with name: ${resolvedName}`
+    );
 
     return NextResponse.json({
       testCases,
+      name: resolvedName,
       message: `Successfully generated ${testCases.length} test cases`,
     });
   } catch (error: any) {
@@ -146,17 +160,20 @@ Generate ${quantity} test cases now. Remember: ONLY JSON array, nothing else.`;
       stack: error.stack,
       cause: error.cause,
     });
-    
+
     const errorMessage = error.message || String(error);
-    const shouldSuggestFlash = model !== "gemini-2.5-flash" && 
-      (errorMessage.includes("404") || errorMessage.includes("not found") || errorMessage.includes("quota"));
-    
+    const shouldSuggestFlash =
+      modelUsed !== "gemini-2.5-flash" &&
+      (errorMessage.includes("404") ||
+        errorMessage.includes("not found") ||
+        errorMessage.includes("quota"));
+
     return NextResponse.json(
       {
         error: "Failed to generate test cases. Please try again.",
         details: error.message || "Unknown error",
         apiKeySet: !!process.env.GEMINI_API_KEY,
-        suggestion: shouldSuggestFlash 
+        suggestion: shouldSuggestFlash
           ? "Try switching to Gemini 2.5 Flash in the model selector at the top."
           : undefined,
       },

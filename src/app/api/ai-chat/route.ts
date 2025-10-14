@@ -1,14 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
+const apiKey = process.env.GEMINI_API_KEY;
+
+if (!apiKey) {
+  throw new Error("GEMINI_API_KEY environment variable is not set.");
+}
+
 const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY!,
+  apiKey,
 });
 
 export async function POST(req: NextRequest) {
-  const { messages, code, language, problemText, testResults, model = "gemini-2.5-flash" } = await req.json();
-  
+  let modelUsed = "gemini-2.5-flash";
   try {
+    const {
+      messages,
+      code,
+      language,
+      problemText,
+      testResults,
+      model = "gemini-2.5-flash",
+    } = await req.json();
+
+    modelUsed = model;
+
     // Build context
     let context = "You are an expert programming tutor helping a student with competitive programming.\n\n";
     
@@ -53,7 +73,7 @@ Now respond to the student's question.`
     console.log(`🤖 Calling Gemini AI (${model}) for chat assistance...`);
 
     const response = await ai.models.generateContent({
-      model: model,
+      model,
       contents: allMessages,
       config: {
         temperature: 0.7,
@@ -70,11 +90,14 @@ Now respond to the student's question.`
     return NextResponse.json({ response: responseText });
   } catch (error: any) {
     console.error("❌ Error in AI chat:", error);
-    
+
     const errorMessage = error.message || String(error);
-    const shouldSuggestFlash = model !== "gemini-2.5-flash" && 
-      (errorMessage.includes("404") || errorMessage.includes("not found") || errorMessage.includes("quota"));
-    
+    const shouldSuggestFlash =
+      modelUsed !== "gemini-2.5-flash" &&
+      (errorMessage.includes("404") ||
+        errorMessage.includes("not found") ||
+        errorMessage.includes("quota"));
+
     return NextResponse.json(
       {
         error: "Failed to get AI response",
