@@ -68,6 +68,7 @@ export default function ProblemPanel({
           complexity,
           quantity,
           model: selectedModel, // Pass the selected model
+          existingName: problemName !== "New Problem" && problemName !== "Untitled Problem" ? problemName : undefined,
         }),
       });
 
@@ -81,12 +82,15 @@ export default function ProblemPanel({
       }
 
       setTestCases(data.testCases);
-      if (data.name) {
+      if (data.name && (!problemName || problemName === "New Problem" || problemName === "Untitled Problem")) {
         onProblemNameChange(data.name);
       }
       
       // Show success notification
-      alert(`✅ Success! Generated ${data.testCases.length} test cases for "${data.name || problemName}"`);
+      const successMsg = data.name && (!problemName || problemName === "New Problem" || problemName === "Untitled Problem")
+        ? `✅ Success! Generated ${data.testCases.length} test cases for "${data.name}"`
+        : `✅ Success! Generated ${data.testCases.length} test cases`;
+      alert(successMsg);
     } catch (err: any) {
       setError(err.message || "Oops! The AI assistant is currently unavailable. Please try again.");
       console.error(err);
@@ -163,14 +167,14 @@ export default function ProblemPanel({
         <div>
           <label className="block text-sm text-gray-400 mb-2">Quantity</label>
           <select
-            className="w-full bg-black/30 text-white p-2 rounded border border-neonCyan/20 
-                       focus:border-neonCyan/50 focus:outline-none"
+            className="w-full bg-black/30 text-white p-2 rounded-lg border border-neonCyan/50 
+                       hover:bg-neonCyan/10 focus:border-neonCyan focus:outline-none transition-colors cursor-pointer"
             value={quantity}
             onChange={(e) => setQuantity(Number(e.target.value))}
           >
+            <option value={5}>5 Test Cases</option>
             <option value={10}>10 Test Cases</option>
-            <option value={25}>25 Test Cases</option>
-            <option value={50}>50 Test Cases</option>
+            <option value={15}>15 Test Cases</option>
           </select>
         </div>
       </div>

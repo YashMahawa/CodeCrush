@@ -49,10 +49,10 @@ git push -u origin main
    
    ```
    Name: GEMINI_API_KEY
-   Value: AIzaSyDNk28sjdjgvVWhSE-ayn_8i4xt9a1gmb8
+   Value: your_actual_gemini_api_key_here
    
    Name: JUDGE0_API_KEY
-   Value: 2cb3da8c74msh204ef9ce17ae689p172370jsna6a2ec3a8359
+   Value: your_actual_judge0_api_key_here
    
    Name: JUDGE0_API_HOST
    Value: judge0-ce.p.rapidapi.com
@@ -85,11 +85,11 @@ vercel
 
 # Add environment variables
 vercel env add GEMINI_API_KEY
-# Paste: AIzaSyDNk28sjdjgvVWhSE-ayn_8i4xt9a1gmb8
+# Paste: your_actual_gemini_api_key_here
 # Environment: Production
 
 vercel env add JUDGE0_API_KEY
-# Paste: 2cb3da8c74msh204ef9ce17ae689p172370jsna6a2ec3a8359
+# Paste: your_actual_judge0_api_key_here
 # Environment: Production
 
 vercel env add JUDGE0_API_HOST

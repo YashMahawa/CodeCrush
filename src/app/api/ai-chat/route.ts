@@ -5,19 +5,22 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-  throw new Error("GEMINI_API_KEY environment variable is not set.");
+function getGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY environment variable is not set.");
+  }
+  
+  return new GoogleGenAI({
+    apiKey,
+  });
 }
-
-const ai = new GoogleGenAI({
-  apiKey,
-});
 
 export async function POST(req: NextRequest) {
   let modelUsed = "gemini-2.5-flash";
   try {
+    const ai = getGeminiClient();
     const {
       messages,
       code,
@@ -31,6 +34,11 @@ export async function POST(req: NextRequest) {
 
     // Build context
     let context = "You are an expert programming tutor helping a student with competitive programming.\n\n";
+    
+    if (language) {
+      context += `Current Programming Language: ${language.toUpperCase()}\n`;
+      context += `IMPORTANT: When providing code solutions or examples, use ${language.toUpperCase()} unless explicitly asked for a different language.\n\n`;
+    }
     
     if (problemText) {
       context += `Problem Description:\n${problemText}\n\n`;
@@ -57,12 +65,35 @@ export async function POST(req: NextRequest) {
       parts: [{
         text: `${context}
 
-Guidelines:
-- When asked for hints: Guide the student's thinking without revealing the solution. Ask probing questions.
-- When asked for solution: Provide a clear, working solution with detailed explanations of the approach.
-- Be encouraging and educational.
-- Use code blocks with proper syntax highlighting.
-- Explain time and space complexity when relevant.
+IMPORTANT - Interface Context:
+You are helping in an IDE with these features:
+- LEFT PANEL: Problem description
+- MIDDLE PANEL: Code editor with Run button (tests single input) and Evaluate button (tests all test cases)
+- RIGHT PANEL: This chat / Test results
+
+CRITICAL CODE GUIDELINES:
+1. When writing code, ALWAYS read input from stdin (not hardcoded examples)
+   - C/C++: Use scanf, cin, or similar
+   - Python: Use input()
+   - Java: Use Scanner or BufferedReader
+2. Write output to stdout (print/cout/System.out)
+3. DO NOT include example hardcoded test values in the code
+4. The user will provide input through the "Run" button interface
+5. Your code should work with ANY valid input, not just specific examples
+
+Language-specific input patterns:
+- C: scanf("%d", &n);
+- C++: cin >> n;
+- Python: n = int(input())
+- Java: Scanner sc = new Scanner(System.in); int n = sc.nextInt();
+
+Chat Guidelines:
+- DEFAULT: Always use ${language || 'the current'} language for code solutions unless user specifically requests another language
+- Hints: Guide thinking with questions, don't reveal solutions
+- Solutions: Provide complete, runnable code that reads from stdin
+- Be clear, encouraging, and educational
+- Explain complexity when relevant
+- Use proper markdown code blocks with \`\`\`${language || 'language'}\`\`\` tags
 
 Now respond to the student's question.`
       }]
@@ -77,10 +108,6 @@ Now respond to the student's question.`
       contents: allMessages,
       config: {
         temperature: 0.7,
-        maxOutputTokens: 4000,
-        ...(model === "gemini-2.5-flash" && {
-          thinkingConfig: { thinkingBudget: 5000 }
-        })
       },
     });
 

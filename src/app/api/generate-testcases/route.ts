@@ -5,24 +5,28 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-  throw new Error("GEMINI_API_KEY environment variable is not set.");
+function getGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY environment variable is not set.");
+  }
+  
+  return new GoogleGenAI({
+    apiKey,
+  });
 }
-
-const ai = new GoogleGenAI({
-  apiKey,
-});
 
 export async function POST(req: NextRequest) {
   let modelUsed = "gemini-2.5-flash";
   try {
+    const ai = getGeminiClient();
     const {
       problemDescription,
       complexity,
       quantity,
       model = "gemini-2.5-flash",
+      existingName,
     } = await req.json();
     modelUsed = model;
 
@@ -47,59 +51,91 @@ export async function POST(req: NextRequest) {
     const fallbackName = (() => {
       const firstLine = problemDescription.split("\n")[0].trim();
       if (!firstLine) return "Untitled Problem";
-      return firstLine.length > 80 ? `${firstLine.slice(0, 77)}...` : firstLine;
+      return firstLine.length > 30 ? `${firstLine.slice(0, 27)}...` : firstLine;
     })();
 
-    const prompt = `You are a competitive programming expert. Produce a JSON object containing a short descriptive problem name and ${normalizedQuantity} diverse, fully-specified test cases for the following problem.
+    // Only request name if not provided
+    const shouldGenerateName = !existingName || existingName === "New Problem" || existingName === "Untitled Problem";
 
-Problem Description:
+    const prompt = shouldGenerateName 
+      ? `Generate ${normalizedQuantity} test cases for this problem. Return only valid JSON.
+
+Problem:
 ${problemDescription}
 
-Complexity Level: ${effectiveComplexity}
-${complexityInstructions[effectiveComplexity]}
+Coverage: ${effectiveComplexity === "Comprehensive" ? "Include edge cases, max constraints, empty inputs, single elements, duplicates, and corner cases" : "Include typical cases and basic edge cases"}
 
-RESPONSE FORMAT (MANDATORY):
+Format:
 {
-  "name": "Concise descriptive title (max 60 characters)",
+  "name": "Problem Title (max 30 chars)",
   "testCases": [
     {
-      "input": "stdin for the test case",
-      "expectedOutput": "stdout for the correct solution",
-      "timeLimitSeconds": 2.0,
+      "input": "actual stdin input",
+      "expectedOutput": "exact stdout output",
+      "timeLimitSeconds": 2,
       "memoryLimitMB": 256
     }
   ]
 }
 
-RULES:
-1. Return ONLY raw JSON (no markdown, no code fences, no explanations).
-2. Provide exactly ${normalizedQuantity} test cases.
-3. Inputs must be fully written out (no ellipsis or descriptive text).
-4. Outputs must match the exact formatting a judge expects (including newlines).
-5. Keep inputs reasonable in size (max ~50 tokens/elements per test).
-6. Time limits: 1-2 seconds for simple problems, up to 3 seconds for heavy cases.
-7. Memory limits: typically 256MB, at most 512MB when justified.
-8. The name should be unique, specific, and reflect the core challenge.
+Requirements:
+- Return ONLY the JSON object (no markdown, no explanations)
+- All inputs/outputs must have actual content (no empty strings, no whitespace-only, no single newlines)
+- Write full inputs (no "..." or placeholders)
+- Match exact output format expected by a judge
+- Keep inputs reasonably sized (under 1000 characters each)
+- Time: 1-3 seconds, Memory: 128-512 MB
+`
+      : `Generate ${normalizedQuantity} test cases for this problem. Return only valid JSON.
+
+Problem:
+${problemDescription}
+
+Coverage: ${effectiveComplexity === "Comprehensive" ? "Include edge cases, max constraints, empty inputs, single elements, duplicates, and corner cases" : "Include typical cases and basic edge cases"}
+
+Format:
+{
+  "testCases": [
+    {
+      "input": "actual stdin input",
+      "expectedOutput": "exact stdout output",
+      "timeLimitSeconds": 2,
+      "memoryLimitMB": 256
+    }
+  ]
+}
+
+Requirements:
+- Return ONLY the JSON object (no markdown, no explanations)
+- All inputs/outputs must have actual content (no empty strings, no whitespace-only, no single newlines)
+- Write full inputs (no "..." or placeholders)
+- Match exact output format expected by a judge
+- Keep inputs reasonably sized (under 1000 characters each)
+- Time: 1-3 seconds, Memory: 128-512 MB
 `;
 
     console.log(`🧠 Calling Gemini API (${model}) to generate test cases...`);
+    console.log(`📝 Problem description length: ${problemDescription.length} chars`);
 
     const response = await ai.models.generateContent({
       model,
       contents: prompt,
       config: {
-        temperature: 0.7,
-        maxOutputTokens: 8000,
-  ...(model === "gemini-2.5-flash" && {
-          thinkingConfig: {
-            thinkingBudget: 5000,
-          },
-        }),
+        temperature: 0.5,
+        topP: 0.9,
+        topK: 40,
       },
     });
 
     console.log("✅ Received response from Gemini");
+    
+    if (!response || !response.text) {
+      console.error("❌ Empty response from Gemini API");
+      throw new Error("Empty response from AI model");
+    }
+    
     let text = response.text || "";
+    console.log(`📄 Response length: ${text.length} chars`);
 
     text = text.trim().replace(/^```json\s*/i, "").replace(/```$/i, "");
 
@@ -135,23 +171,59 @@ RULES:
       throw new Error("Invalid test cases format");
     }
 
-    for (const tc of testCases) {
-      if (!tc?.input || !tc?.expectedOutput || !tc?.timeLimitSeconds || !tc?.memoryLimitMB) {
-        throw new Error("Test case missing required fields");
+    const validatedTestCases = testCases.map((tc: any, index: number) => {
+      // Ensure all required fields exist with defaults
+      const input = typeof tc?.input === "string" ? tc.input : "";
+      const expectedOutput = typeof tc?.expectedOutput === "string" ? tc.expectedOutput : "";
+      const timeLimitSeconds = typeof tc?.timeLimitSeconds === "number" 
+        ? tc.timeLimitSeconds 
+        : (typeof tc?.timeLimitSeconds === "string" ? parseFloat(tc.timeLimitSeconds) : 2.0);
+      const memoryLimitMB = typeof tc?.memoryLimitMB === "number" 
+        ? tc.memoryLimitMB 
+        : (typeof tc?.memoryLimitMB === "string" ? parseFloat(tc.memoryLimitMB) : 256);
+
+      // Reject empty or whitespace-only inputs/outputs
+      const inputTrimmed = input.trim();
+      const outputTrimmed = expectedOutput.trim();
+      
+      if (!inputTrimmed || !outputTrimmed) {
+        console.warn(`⚠️ Test case ${index + 1} rejected: empty input or output`);
+        return null;
       }
+
+      // Reject inputs that are only whitespace characters
+      if (/^[\s\n\r\t]+$/.test(input) || /^[\s\n\r\t]+$/.test(expectedOutput)) {
+        console.warn(`⚠️ Test case ${index + 1} rejected: whitespace-only content`);
+        return null;
+      }
+
+      return {
+        input,
+        expectedOutput,
+        timeLimitSeconds: Math.max(0.5, Math.min(timeLimitSeconds, 10)),
+        memoryLimitMB: Math.max(64, Math.min(memoryLimitMB, 1024)),
+      };
+    }).filter(Boolean);
+
+    if (validatedTestCases.length === 0) {
+      throw new Error("No valid test cases generated");
     }
 
-    const resolvedName =
-      typeof name === "string" && name.trim().length > 0 ? name.trim() : fallbackName;
+    // Use existing name if provided, otherwise use AI-generated name (max 30 chars) or fallback
+    const resolvedName = existingName && existingName !== "New Problem" && existingName !== "Untitled Problem"
+      ? existingName
+      : (typeof name === "string" && name.trim().length > 0 
+          ? name.trim().slice(0, 30) 
+          : fallbackName);
 
     console.log(
-      `✅ Successfully generated ${testCases.length} test cases with name: ${resolvedName}`
+      `✅ Successfully generated ${validatedTestCases.length} test cases${!existingName ? ` with name: ${resolvedName}` : ''}`
     );
 
     return NextResponse.json({
-      testCases,
+      testCases: validatedTestCases,
       name: resolvedName,
-      message: `Successfully generated ${testCases.length} test cases`,
+      message: `Successfully generated ${validatedTestCases.length} test cases`,
     });
   } catch (error: any) {
     console.error("❌ Error generating test cases:", error);
@@ -159,23 +231,53 @@ RULES:
       message: error.message,
       stack: error.stack,
       cause: error.cause,
+      name: error.name,
+      code: error.code,
+    });
+    
+    // Log environment info (without exposing keys)
+    console.error("Environment check:", {
+      hasGeminiKey: !!process.env.GEMINI_API_KEY,
+      keyLength: process.env.GEMINI_API_KEY?.length || 0,
+      nodeEnv: process.env.NODE_ENV,
+      vercelEnv: process.env.VERCEL_ENV,
     });
 
     const errorMessage = error.message || String(error);
+    
+    // Detect network/fetch errors
+    const isNetworkError = 
+      errorMessage.includes("fetch failed") ||
+      errorMessage.includes("ECONNREFUSED") ||
+      errorMessage.includes("ETIMEDOUT") ||
+      errorMessage.includes("network") ||
+      errorMessage.includes("ENOTFOUND");
+    
     const shouldSuggestFlash =
       modelUsed !== "gemini-2.5-flash" &&
       (errorMessage.includes("404") ||
         errorMessage.includes("not found") ||
         errorMessage.includes("quota"));
 
+    let userMessage = "Failed to generate test cases. Please try again.";
+    let suggestion = undefined;
+
+    if (isNetworkError) {
+      userMessage = "Network connection error. Check your internet connection.";
+      suggestion = "Verify your internet connection and try again in a moment.";
+    } else if (shouldSuggestFlash) {
+      suggestion = "Try switching to Gemini 2.5 Flash in the model selector at the top.";
+    } else if (errorMessage.includes("API key")) {
+      userMessage = "API authentication error.";
+      suggestion = "Check that your GEMINI_API_KEY is set correctly in .env.local";
+    }
+
     return NextResponse.json(
       {
-        error: "Failed to generate test cases. Please try again.",
+        error: userMessage,
         details: error.message || "Unknown error",
         apiKeySet: !!process.env.GEMINI_API_KEY,
-        suggestion: shouldSuggestFlash
-          ? "Try switching to Gemini 2.5 Flash in the model selector at the top."
-          : undefined,
+        suggestion,
       },
       { status: 500 }
     );
