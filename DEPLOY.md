@@ -45,7 +45,20 @@ git push -u origin main
    - **Output Directory:** `.next` (default)
 
 4. **Add Environment Variables:**
-   Click "Environment Variables" and add:
+   First, get your API keys:
+
+   **Gemini API Key:**
+   - Go to https://aistudio.google.com/app/apikey
+   - Create a new API key
+   - Copy the key
+
+   **Judge0 API Key:**
+   - Go to https://rapidapi.com/judge0-official/api/judge0-ce
+   - Sign up/Login to RapidAPI
+   - Subscribe to the free plan
+   - Copy your API key from the "Header Parameters" section
+
+   Then add these environment variables:
    
    ```
    Name: GEMINI_API_KEY
