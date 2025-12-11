@@ -15,7 +15,8 @@ export default function ModelSelector({ selectedModel, onModelChange }: ModelSel
   const models = [
     { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Fast Execution" },
     { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", desc: "High Reasoning" },
-    { value: "mistralai/devstral-2512:free", label: "Devstral 2512", desc: "Code Expert (Free)" },
+    { value: "deepseek/deepseek-r1:free", label: "DeepSeek R1", desc: "Deep Thinker (Free)" },
+    { value: "google/gemini-2.0-flash-thinking-exp:free", label: "Gemini Flash Think", desc: "Thinking Model (Free)" },
   ];
 
   const currentLabel = models.find(m => m.value === selectedModel)?.label || selectedModel;
