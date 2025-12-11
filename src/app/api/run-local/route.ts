@@ -38,7 +38,17 @@ export async function POST(req: NextRequest) {
         case "python":
           fileName = path.join(tmpDir, "main.py");
           await fs.writeFile(fileName, code);
-          runCmd = `python3 "${fileName}"`;
+
+          let pythonPath = "python3";
+          try {
+            // Check if python3 is available
+            await execAsync("python3 --version", { timeout: 1000 });
+          } catch {
+            // Fallback to py if python3 is missing
+            pythonPath = "py";
+          }
+
+          runCmd = `${pythonPath} "${fileName}"`;
           break;
 
         case "java":
@@ -66,10 +76,9 @@ export async function POST(req: NextRequest) {
             timeout: timeLimit * 1000,
             maxBuffer: 10 * 1024 * 1024,
             encoding: "utf8",
-            shell: "/bin/bash",
           });
           compileOutput = `${stdout || ""}${stderr || ""}`;
-          
+
           // Check for compilation errors
           if (compileOutput.toLowerCase().includes("error")) {
             return NextResponse.json({
@@ -103,7 +112,6 @@ export async function POST(req: NextRequest) {
           timeout: timeLimit * 1000,
           maxBuffer: 10 * 1024 * 1024,
           encoding: "utf8",
-          shell: "/bin/bash",
         });
         const endTime = Date.now();
 
@@ -116,7 +124,7 @@ export async function POST(req: NextRequest) {
         });
       } catch (error: any) {
         const endTime = Date.now();
-        
+
         if (error.killed && error.signal === "SIGTERM") {
           return NextResponse.json({
             status: { id: 5, description: "Time Limit Exceeded" },

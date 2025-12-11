@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Editor from "@monaco-editor/react";
 
 interface CodePanelProps {
@@ -55,7 +55,7 @@ export default function CodePanel({
       });
 
       const data = await response.json();
-      
+
       // Handle API errors (rate limits, etc.)
       if (response.status === 429 || data.error?.includes("rate limit")) {
         setRunLog("⚠️ Judge0 API Rate Limit Reached!\n\nPlease try:\n1. Enable 'Local Execution' toggle if you have compilers installed\n2. Wait a few minutes and try again\n3. Upgrade your Judge0 API plan");
@@ -66,7 +66,7 @@ export default function CodePanel({
         setRunLog(`Error: ${data.error}\n${data.details || ""}\n${data.hint || ""}`);
         return;
       }
-      
+
       if (data.compileOutput) {
         setRunLog(`Compilation Error:\n${data.compileOutput}`);
       } else if (data.stderr) {
@@ -125,11 +125,46 @@ export default function CodePanel({
     setEvaluationResults({ loading: true });
 
     try {
+      // Use batch evaluation for local execution (compile once, run multiple times)
+      if (useLocalExecution) {
+        const response = await fetch("/api/batch-evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code,
+            language,
+            testCases,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          setEvaluationResults({
+            error: true,
+            message: data.message || "Evaluation failed",
+            hint: data.compileOutput || data.details || "Check your code and try again.",
+            results: data.results || [],
+          });
+          setIsEvaluating(false);
+          return;
+        }
+
+        setEvaluationResults({
+          loading: false,
+          results: data.results,
+          summary: data.summary,
+        });
+        setIsEvaluating(false);
+        return;
+      }
+
+      // Cloud execution (Judge0) - run test by test
       const results = [];
       for (let i = 0; i < testCases.length; i++) {
         const testCase = testCases[i];
-        
-        const apiEndpoint = useLocalExecution ? "/api/run-local" : "/api/run-code";
+
+        const apiEndpoint = "/api/run-code";
         const response = await fetch(apiEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -167,7 +202,7 @@ export default function CodePanel({
           setIsEvaluating(false);
           return;
         }
-        
+
         let status = "Passed";
         if (data.compileOutput) {
           status = "Compilation Error";
@@ -200,7 +235,7 @@ export default function CodePanel({
 
       const passedCount = results.filter((r) => r.status === "Passed").length;
       const totalTime = results.reduce((sum, r) => sum + (typeof r.time === 'number' ? r.time : parseFloat(r.time || '0')), 0);
-      
+
       setEvaluationResults({
         loading: false,
         results,
@@ -239,26 +274,36 @@ export default function CodePanel({
 
       if (data.available) {
         setUseLocalExecution(true);
-        setLocalMessage({ text: "🖥️ Local execution ready! Cloud mode still available anytime.", type: "success" });
+
+        // Format status message
+        let msg = "Local execution ready!";
+        if (data.languages) {
+          const installed = Object.entries(data.languages)
+            .filter(([_, v]) => v)
+            .map(([k]) => k === "cpp" ? "C++" : k.charAt(0).toUpperCase() + k.slice(1));
+
+          if (installed.length === 0) {
+            msg += " (No languages found, but enabled)";
+          } else {
+            msg += ` (Found: ${installed.join(", ")})`;
+          }
+        }
+
+        setLocalMessage({ text: msg, type: "success" });
       } else {
         setUseLocalExecution(false);
 
         if (data.cloudEnvironment) {
           setLocalMessage({
-            text: "Local execution requires running CodeCrush on your own machine. Redirecting to GitHub so you can clone the repo...",
+            text: "Local execution requires running CodeCrush locally. Redirecting...",
             type: "error",
           });
           setTimeout(() => {
             window.location.href = "https://github.com/YashMahawa/CodeCrush";
           }, 3000);
-        } else if (Array.isArray(data.missing) && data.missing.length > 0) {
-          setLocalMessage({
-            text: `Install these tools to enable local execution: ${data.missing.join(", ")}`,
-            type: "error",
-          });
         } else {
           setLocalMessage({
-            text: "Local execution is currently unavailable on this environment.",
+            text: "Local execution unavailable. Ensure you have gcc, g++, python, or java installed.",
             type: "error",
           });
         }
@@ -267,7 +312,7 @@ export default function CodePanel({
       console.error("Failed to check local execution", error);
       setUseLocalExecution(false);
       setLocalMessage({
-        text: "Couldn't verify local execution. Ensure you're running CodeCrush locally with gcc/g++/python3/java installed.",
+        text: "Couldn't verify local execution.",
         type: "error",
       });
     } finally {
@@ -276,17 +321,25 @@ export default function CodePanel({
   };
 
   return (
-    <div className="glass-panel h-full flex flex-col overflow-hidden">
+    <div className="kinetic-panel h-full flex flex-col overflow-hidden">
       {/* Action Bar */}
-      <div className="flex items-center justify-between p-4 border-b border-neonCyan/20">
+      <div className="flex items-center justify-between p-4 border-b border-white/5 bg-[#050505]/40">
         <div className="flex items-center gap-3">
-          <span className="text-xl">⚡</span>
-          <h2 className="text-xl font-bold text-neonCyan">Code Forge</h2>
+          <div className="p-1.5 rounded-lg bg-white/5 border border-white/10">
+            <svg className="w-5 h-5 text-[#FF5500]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold tracking-wide text-white/90">Code Forge</h2>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Local Execution Toggle */}
-          <label className="flex items-center gap-2 cursor-pointer group">
+        <div className="flex items-center gap-4">
+          {/* Local Execution Toggle - Slim Modern Switch */}
+          <label className="flex items-center gap-3 cursor-pointer group">
+            <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${useLocalExecution ? "text-[#FF5500]" : "text-white/30"
+              }`}>
+              {isCheckingLocal ? "Checking..." : useLocalExecution ? "Local" : "Cloud"}
+            </span>
             <div className="relative">
               <input
                 type="checkbox"
@@ -295,25 +348,24 @@ export default function CodePanel({
                 disabled={isCheckingLocal}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-gray-700 rounded-full peer 
-                              peer-checked:bg-neonLime/50 
+              <div className="w-9 h-5 bg-white/10 rounded-full peer 
+                              peer-checked:bg-[#FF5500]/20 
                               transition-all duration-300 
-                              border border-gray-600 peer-checked:border-neonLime/50">
+                              border border-white/10 peer-checked:border-[#FF5500]/50">
               </div>
-              <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full 
+              <div className="absolute left-1 top-1 w-3 h-3 bg-white/40 rounded-full 
                               transition-transform duration-300 
-                              peer-checked:translate-x-5 peer-checked:bg-neonLime">
+                              peer-checked:translate-x-4 peer-checked:bg-[#FF5500] shadow-sm">
               </div>
             </div>
-            <span className="text-xs text-gray-400 group-hover:text-neonLime transition-colors">
-              {isCheckingLocal ? "⏳ Checking..." : useLocalExecution ? "🖥️ Local" : "☁️ Cloud"}
-            </span>
           </label>
 
+          <div className="h-6 w-px bg-white/10 mx-1"></div>
+
           <select
-            className="bg-black/30 text-white px-3 py-1.5 rounded-lg border border-neonCyan/50 
-                       hover:bg-neonCyan/10 focus:border-neonCyan focus:outline-none text-sm 
-                       transition-colors cursor-pointer"
+            className="bg-white/5 text-white/90 px-3 py-1.5 rounded-lg border border-white/10 
+                       hover:bg-white/10 focus:border-[#FF5500]/50 focus:outline-none text-xs font-medium 
+                       transition-colors cursor-pointer min-w-[100px]"
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
           >
@@ -328,10 +380,19 @@ export default function CodePanel({
             whileTap={{ scale: 0.95 }}
             onClick={handleRun}
             disabled={isRunning}
-            className="px-4 py-1.5 bg-blue-500/20 text-blue-400 rounded border border-blue-400/50 
-                       hover:bg-blue-500/30 disabled:opacity-50 text-sm font-medium"
+            className="px-5 py-1.5 bg-white/5 text-white rounded-lg border border-white/10 
+                       hover:bg-white/10 disabled:opacity-50 text-xs font-bold tracking-wide flex items-center gap-2"
           >
-            {isRunning ? "Running..." : "▶ Run"}
+            {isRunning ? (
+              <span className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full"></span>
+            ) : (
+              // Tech Play Icon (Outlined Triangle with internal detail)
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <polygon points="5 3 19 12 5 21 5 3" />
+                <path d="M9 7v10" strokeLinecap="round" strokeOpacity={0.5} />
+              </svg>
+            )}
+            Run
           </motion.button>
 
           <motion.button
@@ -339,30 +400,50 @@ export default function CodePanel({
             whileTap={{ scale: 0.95 }}
             onClick={handleEvaluate}
             disabled={isEvaluating}
-            className="px-4 py-1.5 bg-neonCyan/20 text-neonCyan rounded border border-neonCyan/50 
-                       hover:bg-neonCyan/30 disabled:opacity-50 text-sm font-medium neon-cyan-glow"
+            className="px-5 py-1.5 bg-[#FF5500] text-black 
+                       rounded-lg border border-[#FF5500] 
+                       hover:brightness-110 disabled:opacity-50 text-xs font-bold tracking-wide shadow-[0_0_15px_rgba(255,85,0,0.3)]"
           >
-            {isEvaluating ? "Evaluating..." : "✓ Evaluate"}
+            {isEvaluating ? (
+              <span className="flex items-center gap-2">
+                <span className="animate-spin w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full"></span>
+                Evaluating...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                {/* Stylized Lightning/Check Icon */}
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Evaluate Master
+              </span>
+            )}
           </motion.button>
         </div>
       </div>
 
-      {localMessage && (
-        <div
-          className={`mx-4 mt-2 rounded border px-3 py-2 text-sm transition-all duration-300 ${
-            localMessage.type === "success"
-              ? "border-neonLime/50 text-neonLime bg-neonLime/10"
+      <AnimatePresence>
+        {localMessage && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className={`overflow-hidden border-b ${localMessage.type === "success"
+              ? "bg-green-500/5 border-green-500/10 text-green-400"
               : localMessage.type === "error"
-              ? "border-red-500/40 text-red-300 bg-red-500/10"
-              : "border-neonCyan/40 text-neonCyan bg-neonCyan/10"
-          }`}
-        >
-          {localMessage.text}
-        </div>
-      )}
+                ? "bg-red-500/5 border-red-500/10 text-red-400"
+                : "bg-blue-500/5 border-blue-500/10 text-blue-400"
+              }`}
+          >
+            <div className="px-4 py-2 text-xs font-medium text-center">
+              {localMessage.text}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Monaco Editor */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden relative group">
         <Editor
           height="100%"
           language={language === "cpp" ? "cpp" : language}
@@ -372,82 +453,62 @@ export default function CodePanel({
           options={{
             minimap: { enabled: false },
             fontSize: 14,
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            fontLigatures: true,
             lineNumbers: "on",
             scrollBeyondLastLine: false,
             automaticLayout: true,
             tabSize: 4,
+            padding: { top: 20 },
+            smoothScrolling: true,
+            cursorBlinking: "smooth",
+            cursorSmoothCaretAnimation: "on",
+            renderLineHighlight: "none", // Cleaner look
+            contextmenu: false,
           }}
+          className="bg-transparent" // Important for glass effect if editor allows
         />
-      </div>
-
-      {/* AI Assistant Bar */}
-      <div className="flex gap-2 p-3 border-t border-neonCyan/20 bg-black/20">
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setShowChat(true)}
-          className="flex-1 py-2 bg-neonMagenta/20 text-neonMagenta rounded border border-neonMagenta/50 
-                     hover:bg-neonMagenta/30 text-sm font-medium"
-        >
-          🤔 Ask for Hint
-        </motion.button>
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setShowChat(true)}
-          className="flex-1 py-2 bg-neonMagenta/20 text-neonMagenta rounded border border-neonMagenta/50 
-                     hover:bg-neonMagenta/30 text-sm font-medium"
-        >
-          💡 Get Solution
-        </motion.button>
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => setShowChat(true)}
-          className="px-4 py-2 bg-neonCyan/20 text-neonCyan rounded border border-neonCyan/50 
-                     hover:bg-neonCyan/30 text-sm font-medium"
-        >
-          💬 Chat
-        </motion.button>
+        {/* Editor Gloss Overlay */}
+        <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_40px_rgba(0,0,0,0.8)]"></div>
       </div>
 
       {/* Tabs for Custom Input / Run Log */}
-      <div className="border-t border-neonCyan/20">
-        <div className="flex">
+      <div className="border-t border-white/5 bg-black/20 backdrop-blur-sm">
+        <div className="flex border-b border-white/5">
           <button
             onClick={() => setActiveTab("input")}
-            className={`flex-1 py-2 text-sm font-medium transition-colors ${
-              activeTab === "input"
-                ? "bg-neonCyan/20 text-neonCyan border-t-2 border-neonCyan"
-                : "text-gray-400 hover:text-white"
-            }`}
+            className={`px-6 py-2 text-xs font-bold tracking-wider transition-all border-b-2 ${activeTab === "input"
+              ? "border-[#FF5500] text-[#FF5500] bg-white/5"
+              : "border-transparent text-white/40 hover:text-white hover:bg-white/5"
+              }`}
           >
-            Custom Input
+            CUSTOM INPUT
           </button>
           <button
             onClick={() => setActiveTab("log")}
-            className={`flex-1 py-2 text-sm font-medium transition-colors ${
-              activeTab === "log"
-                ? "bg-neonCyan/20 text-neonCyan border-t-2 border-neonCyan"
-                : "text-gray-400 hover:text-white"
-            }`}
+            className={`px-6 py-2 text-xs font-bold tracking-wider transition-all border-b-2 ${activeTab === "log"
+              ? "border-[#FF5500] text-[#FF5500] bg-white/5"
+              : "border-transparent text-white/40 hover:text-white hover:bg-white/5"
+              }`}
           >
-            Run Log
+            RUN LOG
           </button>
         </div>
 
-        <div className="h-32">
+        <div className="h-32 relative">
           {activeTab === "input" ? (
             <textarea
-              className="w-full h-full bg-black/30 text-white p-3 resize-none focus:outline-none 
-                         font-mono text-sm"
+              className="w-full h-full bg-transparent text-white/90 p-3 resize-none focus:outline-none 
+                         font-mono text-xs leading-relaxed placeholder-white/20"
               placeholder="Enter custom input here..."
               value={customInput}
               onChange={(e) => setCustomInput(e.target.value)}
+              spellCheck={false}
             />
           ) : (
-            <pre className="w-full h-full bg-black/30 text-white p-3 overflow-auto font-mono text-sm">
-              {runLog || "No output yet. Click 'Run' to execute your code."}
+            <pre className={`w-full h-full bg-transparent p-3 overflow-auto font-mono text-xs leading-relaxed ${runLog.includes("Error") ? "text-red-300" : "text-white/80"
+              }`}>
+              {runLog || <span className="text-white/30 italic">Execution output will appear here...</span>}
             </pre>
           )}
         </div>

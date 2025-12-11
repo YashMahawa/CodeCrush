@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import { OpenRouter } from "@openrouter/sdk";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -7,12 +8,19 @@ export const dynamic = "force-dynamic";
 
 function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
-  
+
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY environment variable is not set.");
   }
-  
+
   return new GoogleGenAI({
+    apiKey,
+  });
+}
+
+function getOpenRouterClient() {
+  const apiKey = process.env.OPENROUTER_API_KEY || "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";
+  return new OpenRouter({
     apiKey,
   });
 }
@@ -34,20 +42,20 @@ export async function POST(req: NextRequest) {
 
     // Build context
     let context = "You are an expert programming tutor helping a student with competitive programming.\n\n";
-    
+
     if (language) {
       context += `Current Programming Language: ${language.toUpperCase()}\n`;
       context += `IMPORTANT: When providing code solutions or examples, use ${language.toUpperCase()} unless explicitly asked for a different language.\n\n`;
     }
-    
+
     if (problemText) {
       context += `Problem Description:\n${problemText}\n\n`;
     }
-    
+
     if (code) {
       context += `Student's Current Code (${language}):\n\`\`\`${language}\n${code}\n\`\`\`\n\n`;
     }
-    
+
     if (testResults?.results) {
       const passed = testResults.results.filter((r: any) => r.status === "Passed").length;
       const total = testResults.results.length;
@@ -129,7 +137,7 @@ Now respond to the student's question.`
       {
         error: "Failed to get AI response",
         details: error.message,
-        suggestion: shouldSuggestFlash 
+        suggestion: shouldSuggestFlash
           ? "Try switching to Gemini 2.5 Flash in the model selector at the top."
           : undefined,
       },

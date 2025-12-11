@@ -19,7 +19,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={`${inter.className} bg-[#050505] relative min-h-screen`}>
+        <div className="kinetic-atmosphere" />
+        <div className="relative z-10">
+          {children}
+        </div>
+      </body>
     </html>
   );
 }

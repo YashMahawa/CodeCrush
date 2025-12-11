@@ -1,31 +1,41 @@
 export const LANGUAGE_LABELS: Record<string, string> = {
-  c: "C",
-  cpp: "C++",
-  python: "Python",
-  java: "Java",
+    c: "C",
+    cpp: "C++",
+    python: "Python",
+    java: "Java",
 };
 
 export const DEFAULT_CODE_SNIPPETS: Record<string, string> = {
-  c: `#include <stdio.h>
+    c: `#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 int main(void) {
-    // Write your C solution here
+    // Read input from stdin (e.g., scanf, fgets)
+    // Print output to stdout (e.g., printf)
+
     return 0;
 }
 `,
-  cpp: `#include <bits/stdc++.h>
+    cpp: `#include <bits/stdc++.h>
 using namespace std;
+
+// Common CP optimizations
+#pragma GCC optimize("O3,unroll-loops")
+#pragma GCC target("avx2,bmi,bmi2,lzcnt,popcnt")
 
 int main() {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
 
-    // Write your C++ solution here
+    // Write your solution here.
+    // Read from cin, print to cout.
+    // This code runs once per test case.
 
     return 0;
 }
 `,
-  python: `import sys
+    python: `import sys
 
 
 def solve():
@@ -37,7 +47,7 @@ def solve():
 if __name__ == "__main__":
     solve()
 `,
-  java: `import java.io.*;
+    java: `import java.io.*;
 import java.util.*;
 
 public class Main {
@@ -104,13 +114,13 @@ public class Main {
 };
 
 export function cloneDefaultSnippets(): Record<string, string> {
-  return { ...DEFAULT_CODE_SNIPPETS };
+    return { ...DEFAULT_CODE_SNIPPETS };
 }
 
 export function getDefaultSnippet(language: string): string {
-  return DEFAULT_CODE_SNIPPETS[language] ?? "// Write your code here\n";
+    return DEFAULT_CODE_SNIPPETS[language] ?? "// Write your code here\n";
 }
 
 export function getLanguageLabel(language: string): string {
-  return LANGUAGE_LABELS[language] ?? language.toUpperCase();
+    return LANGUAGE_LABELS[language] ?? language.toUpperCase();
 }

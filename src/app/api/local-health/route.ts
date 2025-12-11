@@ -18,31 +18,55 @@ const normalizeErrorOutput = (value: unknown) => {
 };
 
 export async function GET() {
-  const missing: string[] = [];
-  const checks = Object.entries(REQUIRED_COMMANDS).map(async ([_, [command, arg]]) => {
-    try {
-      await execAsync(`${command} ${arg}`, { timeout: 2000, encoding: "utf8" });
-    } catch (error: any) {
-      const stderr = normalizeErrorOutput(error?.stderr);
-      if (error?.code === "ENOENT" || error?.code === 127 || stderr.includes("not found")) {
-        missing.push(command);
-      } else if (error?.killed) {
-        missing.push(command);
-      }
-    }
-  });
+  const installed: Record<string, boolean> = {};
 
-  await Promise.all(checks);
-
-  const isCloud = Boolean(process.env.VERCEL);
-
-  if (missing.length === 0 && !isCloud) {
-    return NextResponse.json({ available: true });
+  // Check GCC (C)
+  try {
+    await execAsync("gcc --version", { timeout: 2000 });
+    installed.c = true;
+  } catch {
+    installed.c = false;
   }
 
+  // Check G++ (C++)
+  try {
+    await execAsync("g++ --version", { timeout: 2000 });
+    installed.cpp = true;
+  } catch {
+    installed.cpp = false;
+  }
+
+  // Check Java
+  try {
+    await execAsync("java -version", { timeout: 2000 });
+    installed.java = true;
+  } catch {
+    installed.java = false;
+  }
+
+  // Check Python (Try python3 first, then py)
+  try {
+    await execAsync("python3 --version", { timeout: 2000 });
+    installed.python = true;
+  } catch {
+    try {
+      await execAsync("py --version", { timeout: 2000 });
+      installed.python = true;
+    } catch {
+      installed.python = false;
+    }
+  }
+
+  const isCloud = Boolean(process.env.VERCEL);
+  const anyInstalled = Object.values(installed).some(Boolean);
+
+  // If running locally, we are "available" if at least one language is installed
+  // or if we just want to allow the user to try (permissive)
+  const available = !isCloud && anyInstalled;
+
   return NextResponse.json({
-    available: false,
-    missing,
+    available,
+    languages: installed,
     cloudEnvironment: isCloud,
   });
 }

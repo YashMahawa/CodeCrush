@@ -9,27 +9,41 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#101015",
-        panel: "rgba(20, 20, 25, 0.6)",
-        neonCyan: "#00FFFF",
-        neonMagenta: "#FF00FF",
-        neonLime: "#39FF14",
-        brightRed: "#FF1744",
+        background: "#05050A", // Obsidian
+        surface: "#0F111A",     // Deep Blue-Grey
+        glass: {
+          border: "rgba(255, 255, 255, 0.08)",
+          highlight: "rgba(255, 255, 255, 0.15)",
+          base: "rgba(10, 10, 18, 0.6)",
+        },
+        primary: {
+          start: "#7928CA", // Deep Violet
+          end: "#FF0080",   // Electric Pink
+          cyan: "#00DFD8",  // Cyber Cyan
+        },
+        // Legacy support (mapped to new palette or kept for safety)
+        neonCyan: "#00DFD8",
+        neonMagenta: "#D946EF",
+        neonLime: "#84CC16",
       },
       backdropBlur: {
-        glass: "12px",
+        'xs': '2px',
+        glass: "16px",
+        deep: "40px",
       },
       animation: {
-        pulse: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        glitch: "glitch 0.5s ease-in-out",
+        pulse: "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        float: "float 6s ease-in-out infinite",
+        shimmer: "shimmer 2s linear infinite",
       },
       keyframes: {
-        glitch: {
-          "0%, 100%": { transform: "translate(0)" },
-          "20%": { transform: "translate(-2px, 2px)" },
-          "40%": { transform: "translate(-2px, -2px)" },
-          "60%": { transform: "translate(2px, 2px)" },
-          "80%": { transform: "translate(2px, -2px)" },
+        float: {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        shimmer: {
+          from: { backgroundPosition: "0 0" },
+          to: { backgroundPosition: "-200% 0" },
         },
       },
     },
