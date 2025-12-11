@@ -54,6 +54,7 @@ export interface Session {
     input: string;
     output: string;
   };
+  customInput?: string;
   timerState?: TimerSnapshot;
   stopwatchState?: StopwatchSnapshot;
   timerMinutes?: number; // legacy fields
@@ -189,6 +190,7 @@ function normalizeSession(raw: any): Session {
     testCases: Array.isArray(raw?.testCases) ? raw.testCases : [],
     lastEvaluation: raw?.lastEvaluation,
     lastRun: raw?.lastRun,
+    customInput: typeof raw?.customInput === "string" ? raw.customInput : "",
     timerState,
     stopwatchState,
     chatHistory: Array.isArray(raw?.chatHistory) ? raw.chatHistory : [],

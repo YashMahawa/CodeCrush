@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Editor from "@monaco-editor/react";
+import { getActiveSessionId, getSession, saveSession } from "@/lib/sessionStorage";
 
 interface CodePanelProps {
   code: string;
@@ -31,19 +32,76 @@ export default function CodePanel({
   const [runLog, setRunLog] = useState("");
   const [activeTab, setActiveTab] = useState<"input" | "log">("input");
   const [isRunning, setIsRunning] = useState(false);
-  const [useLocalExecution, setUseLocalExecution] = useState(false);
-  const [isCheckingLocal, setIsCheckingLocal] = useState(false);
   const [localMessage, setLocalMessage] = useState<
     { text: string; type: "info" | "success" | "error" } | null
   >(null);
 
+  // Load custom input from session
+  useEffect(() => {
+    const sessionId = getActiveSessionId();
+    if (sessionId) {
+      const session = getSession(sessionId);
+      if (session && session.customInput) {
+        setCustomInput(session.customInput);
+      }
+    }
+  }, []);
+
+  // Save custom input to session on change
+  const handleCustomInputChange = (value: string) => {
+    setCustomInput(value);
+    const sessionId = getActiveSessionId();
+    if (sessionId) {
+      const session = getSession(sessionId);
+      if (session) {
+        session.customInput = value;
+        saveSession(session);
+      }
+    }
+  };
+
+  const checkLocalCompiler = async (lang: string) => {
+    try {
+      const response = await fetch("/api/local-health");
+      const data = await response.json();
+
+      if (!data.available) return { available: false, error: "Local execution environment not found." };
+
+      if (data.languages && !data.languages[lang]) {
+        let msg = "";
+        switch (lang) {
+          case "cpp": msg = "C++ compiler (g++) not found. Please install GCC."; break;
+          case "c": msg = "C compiler (gcc) not found. Please install GCC."; break;
+          case "python": msg = "Python interpreter not found. Please install Python."; break;
+          case "java": msg = "Java JDK not found. Please install Java Development Kit."; break;
+          default: msg = `${lang} compiler/interpreter not found.`;
+        }
+        return { available: false, error: msg };
+      }
+
+      return { available: true };
+    } catch (e) {
+      return { available: false, error: "Failed to check local environment." };
+    }
+  };
+
   const handleRun = async () => {
     setIsRunning(true);
     setActiveTab("log");
-    setRunLog("Running...");
+    setRunLog("Running locally...");
+
+    // Check environment first
+    const envCheck = await checkLocalCompiler(language);
+    if (!envCheck.available) {
+        setRunLog(`Error: ${envCheck.error}\n\nPlease install the necessary tools to run code locally.`);
+        setLocalMessage({ text: envCheck.error || "Compiler missing", type: "error" });
+        setIsRunning(false);
+        return;
+    }
+    setLocalMessage(null);
 
     try {
-      const apiEndpoint = useLocalExecution ? "/api/run-local" : "/api/run-code";
+      const apiEndpoint = "/api/run-local";
       const response = await fetch(apiEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -56,12 +114,6 @@ export default function CodePanel({
 
       const data = await response.json();
 
-      // Handle API errors (rate limits, etc.)
-      if (response.status === 429 || data.error?.includes("rate limit")) {
-        setRunLog("⚠️ Judge0 API Rate Limit Reached!\n\nPlease try:\n1. Enable 'Local Execution' toggle if you have compilers installed\n2. Wait a few minutes and try again\n3. Upgrade your Judge0 API plan");
-        return;
-      }
-
       if (data.error) {
         setRunLog(`Error: ${data.error}\n${data.details || ""}\n${data.hint || ""}`);
         return;
@@ -72,8 +124,7 @@ export default function CodePanel({
       } else if (data.stderr) {
         setRunLog(`Runtime Error:\n${data.stderr}`);
       } else {
-        const execMode = data.executionMode === "local" ? " (Local)" : " (Judge0)";
-        setRunLog(`Output${execMode}:\n${data.stdout || "(no output)"}`);
+        setRunLog(`Output (Local):\n${data.stdout || "(no output)"}`);
       }
     } catch (err: any) {
       setRunLog(`Error: Failed to execute code\n${err.message || ""}`);
@@ -124,9 +175,23 @@ export default function CodePanel({
     setIsEvaluating(true);
     setEvaluationResults({ loading: true });
 
+    // Check environment first
+    const envCheck = await checkLocalCompiler(language);
+    if (!envCheck.available) {
+        setEvaluationResults({
+            error: true,
+            message: "Compiler/Interpreter Missing",
+            hint: envCheck.error,
+            results: [],
+        });
+        setLocalMessage({ text: envCheck.error || "Compiler missing", type: "error" });
+        setIsEvaluating(false);
+        return;
+    }
+    setLocalMessage(null);
+
     try {
       // Use batch evaluation for local execution (compile once, run multiple times)
-      if (useLocalExecution) {
         const response = await fetch("/api/batch-evaluate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -157,95 +222,6 @@ export default function CodePanel({
         });
         setIsEvaluating(false);
         return;
-      }
-
-      // Cloud execution (Judge0) - run test by test
-      const results = [];
-      for (let i = 0; i < testCases.length; i++) {
-        const testCase = testCases[i];
-
-        const apiEndpoint = "/api/run-code";
-        const response = await fetch(apiEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            code,
-            language,
-            input: testCase.input,
-            timeLimit: testCase.timeLimitSeconds,
-            memoryLimit: testCase.memoryLimitMB,
-          }),
-        });
-
-        const data = await response.json();
-
-        // Handle API rate limits
-        if (response.status === 429 || data.error?.includes("rate limit")) {
-          setEvaluationResults({
-            error: true,
-            message: "⚠️ Judge0 API Rate Limit Reached!",
-            hint: "Enable 'Local Execution' toggle if you have compilers installed, or wait a few minutes.",
-            results: results,
-          });
-          setIsEvaluating(false);
-          return;
-        }
-
-        // Handle other errors
-        if (data.error) {
-          setEvaluationResults({
-            error: true,
-            message: `Error: ${data.error}`,
-            hint: data.hint || "Please try again or enable local execution.",
-            results: results,
-          });
-          setIsEvaluating(false);
-          return;
-        }
-
-        let status = "Passed";
-        if (data.compileOutput) {
-          status = "Compilation Error";
-        } else if (data.status?.id === 5) { // Time Limit Exceeded
-          status = "TLE";
-        } else if (data.status?.id === 6) { // Memory Limit Exceeded  
-          status = "MLE";
-        } else if (!compareOutputs(data.stdout || "", testCase.expectedOutput || "")) {
-          status = "Wrong Answer";
-        }
-
-        results.push({
-          testNumber: i + 1,
-          status,
-          input: testCase.input,
-          expectedOutput: testCase.expectedOutput,
-          actualOutput: data.stdout || "",
-          time: typeof data.time === 'number' ? data.time : parseFloat(data.time || '0'),
-          memory: typeof data.memory === 'number' ? data.memory : parseFloat(data.memory || '0'),
-          timeLimit: testCase.timeLimitSeconds,
-          memoryLimit: testCase.memoryLimitMB,
-        });
-
-        // Update progress
-        setEvaluationResults({
-          loading: true,
-          progress: { current: i + 1, total: testCases.length },
-        });
-      }
-
-      const passedCount = results.filter((r) => r.status === "Passed").length;
-      const totalTime = results.reduce((sum, r) => sum + (typeof r.time === 'number' ? r.time : parseFloat(r.time || '0')), 0);
-
-      setEvaluationResults({
-        loading: false,
-        results,
-        summary: {
-          passed: passedCount,
-          total: results.length,
-          percentage: Math.round((passedCount / results.length) * 100),
-          totalTime: totalTime.toFixed(2),
-        },
-      });
     } catch (err) {
       console.error(err);
       setEvaluationResults({ error: "Failed to evaluate test cases" });
@@ -254,70 +230,25 @@ export default function CodePanel({
     }
   };
 
-  const handleLocalToggle = async (checked: boolean) => {
-    if (!checked) {
-      setUseLocalExecution(false);
-      if (localMessage?.type !== "success") {
-        setLocalMessage(null);
-      }
-      return;
-    }
+  const handleExport = () => {
+    const extensionMap: Record<string, string> = {
+      cpp: "cpp",
+      c: "c",
+      python: "py",
+      java: "java",
+    };
 
-    if (isCheckingLocal) return;
-
-    setIsCheckingLocal(true);
-    setLocalMessage({ text: "Checking local execution environment...", type: "info" });
-
-    try {
-      const response = await fetch("/api/local-health");
-      const data = await response.json();
-
-      if (data.available) {
-        setUseLocalExecution(true);
-
-        // Format status message
-        let msg = "Local execution ready!";
-        if (data.languages) {
-          const installed = Object.entries(data.languages)
-            .filter(([_, v]) => v)
-            .map(([k]) => k === "cpp" ? "C++" : k.charAt(0).toUpperCase() + k.slice(1));
-
-          if (installed.length === 0) {
-            msg += " (No languages found, but enabled)";
-          } else {
-            msg += ` (Found: ${installed.join(", ")})`;
-          }
-        }
-
-        setLocalMessage({ text: msg, type: "success" });
-      } else {
-        setUseLocalExecution(false);
-
-        if (data.cloudEnvironment) {
-          setLocalMessage({
-            text: "Local execution requires running CodeCrush locally. Redirecting...",
-            type: "error",
-          });
-          setTimeout(() => {
-            window.location.href = "https://github.com/YashMahawa/CodeCrush";
-          }, 3000);
-        } else {
-          setLocalMessage({
-            text: "Local execution unavailable. Ensure you have gcc, g++, python, or java installed.",
-            type: "error",
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Failed to check local execution", error);
-      setUseLocalExecution(false);
-      setLocalMessage({
-        text: "Couldn't verify local execution.",
-        type: "error",
-      });
-    } finally {
-      setIsCheckingLocal(false);
-    }
+    const ext = extensionMap[language] || "txt";
+    const filename = `solution.${ext}`;
+    const blob = new Blob([code], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -334,31 +265,20 @@ export default function CodePanel({
         </div>
 
         <div className="flex items-center gap-4">
-          {/* Local Execution Toggle - Slim Modern Switch */}
-          <label className="flex items-center gap-3 cursor-pointer group">
-            <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${useLocalExecution ? "text-[#FF5500]" : "text-white/30"
-              }`}>
-              {isCheckingLocal ? "Checking..." : useLocalExecution ? "Local" : "Cloud"}
-            </span>
-            <div className="relative">
-              <input
-                type="checkbox"
-                checked={useLocalExecution}
-                onChange={(e) => handleLocalToggle(e.target.checked)}
-                disabled={isCheckingLocal}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-white/10 rounded-full peer 
-                              peer-checked:bg-[#FF5500]/20 
-                              transition-all duration-300 
-                              border border-white/10 peer-checked:border-[#FF5500]/50">
-              </div>
-              <div className="absolute left-1 top-1 w-3 h-3 bg-white/40 rounded-full 
-                              transition-transform duration-300 
-                              peer-checked:translate-x-4 peer-checked:bg-[#FF5500] shadow-sm">
-              </div>
-            </div>
-          </label>
+
+          {/* Export Button */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleExport}
+            className="px-3 py-1.5 bg-white/5 text-white/80 rounded-lg border border-white/10
+                       hover:bg-white/10 hover:text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-2"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Export
+          </motion.button>
 
           <div className="h-6 w-px bg-white/10 mx-1"></div>
 
@@ -502,7 +422,7 @@ export default function CodePanel({
                          font-mono text-xs leading-relaxed placeholder-white/20"
               placeholder="Enter custom input here..."
               value={customInput}
-              onChange={(e) => setCustomInput(e.target.value)}
+              onChange={(e) => handleCustomInputChange(e.target.value)}
               spellCheck={false}
             />
           ) : (

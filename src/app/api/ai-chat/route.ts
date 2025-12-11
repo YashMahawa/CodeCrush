@@ -28,7 +28,6 @@ function getOpenRouterClient() {
 export async function POST(req: NextRequest) {
   let modelUsed = "gemini-2.5-flash";
   try {
-    const ai = getGeminiClient();
     const {
       messages,
       code,
@@ -62,16 +61,7 @@ export async function POST(req: NextRequest) {
       context += `Test Results: ${passed}/${total} passed\n\n`;
     }
 
-    // Convert messages to Gemini format
-    const conversationHistory = messages.map((msg: any) => ({
-      role: msg.role === "assistant" ? "model" : "user",
-      parts: [{ text: msg.content }],
-    }));
-
-    const systemPrompt = {
-      role: "user",
-      parts: [{
-        text: `${context}
+    const systemInstructions = `${context}
 
 IMPORTANT - Interface Context:
 You are helping in an IDE with these features:
@@ -103,23 +93,56 @@ Chat Guidelines:
 - Explain complexity when relevant
 - Use proper markdown code blocks with \`\`\`${language || 'language'}\`\`\` tags
 
-Now respond to the student's question.`
-      }]
-    };
+Now respond to the student's question.`;
 
-    const allMessages = [systemPrompt, ...conversationHistory];
+    let responseText = "";
 
-    console.log(`🤖 Calling Gemini AI (${model}) for chat assistance...`);
+    if (model.startsWith("gemini")) {
+        const ai = getGeminiClient();
+        // Convert messages to Gemini format
+        const conversationHistory = messages.map((msg: any) => ({
+            role: msg.role === "assistant" ? "model" : "user",
+            parts: [{ text: msg.content }],
+        }));
 
-    const response = await ai.models.generateContent({
-      model,
-      contents: allMessages,
-      config: {
-        temperature: 0.7,
-      },
-    });
+        const systemPrompt = {
+            role: "user",
+            parts: [{ text: systemInstructions }]
+        };
 
-    const responseText = response.text || "";
+        const allMessages = [systemPrompt, ...conversationHistory];
+
+        console.log(`🤖 Calling Gemini AI (${model}) for chat assistance...`);
+
+        const response = await ai.models.generateContent({
+            model,
+            contents: allMessages,
+            config: {
+                temperature: 0.7,
+            },
+        });
+        responseText = response.text || "";
+
+    } else {
+        // Use OpenRouter
+        const openRouter = getOpenRouterClient();
+        console.log(`🤖 Calling OpenRouter (${model}) for chat assistance...`);
+
+        const openRouterMessages = [
+            { role: "system", content: systemInstructions },
+            ...messages
+        ];
+
+        const response = await openRouter.chat.send({
+            model: model,
+            messages: openRouterMessages,
+            temperature: 0.7,
+        });
+
+        const content = response.choices[0]?.message?.content;
+        responseText = typeof content === "string" ? content : "";
+    }
+
     console.log("✅ Received AI response");
 
     return NextResponse.json({ response: responseText });
